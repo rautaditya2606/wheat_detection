@@ -1,0 +1,20 @@
+.env
+.env.example
+users.json
+static/uploads
+wheat_resnet50.pt
+__pycache__
+app.db
+
+# GeoLite2 City database
+GeoLite2-City.mmdb
+
+# Virtual environment
+venv
+
+# IDE specific files
+.idea
+.vscode
+
+# Log files
+*.log

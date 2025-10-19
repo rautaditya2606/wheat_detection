@@ -1,3 +1,4 @@
+034dcf5fc6cd4a3eaf1175716251910
 # Wheat Disease Classifier
 
 A web application that uses deep learning to identify wheat diseases from images of wheat crops and leaves.
@@ -19,7 +20,7 @@ A web application that uses deep learning to identify wheat diseases from images
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/rautaditya2606/wheat_detection.git
    cd wheat-disease-classifier
    ```
 

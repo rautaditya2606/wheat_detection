@@ -1,0 +1,31 @@
+{
+  "2": [
+    {
+      "disease": "",
+      "image_path": "",
+      "responses": {
+        "soil_type": "Sandy",
+        "fertilizer_used": "None",
+        "pesticide_used": "None",
+        "crop_rotation": "No",
+        "irrigation_method": "Flood",
+        "previous_crop": "corn",
+        "planting_date": "2025-10-02",
+        "additional_notes": ""
+      },
+      "weather_data": {
+        "temperature": 23.7,
+        "humidity": 67,
+        "conditions": "Clear",
+        "wind_speed": 7.6,
+        "wind_dir": "ESE",
+        "precipitation": 0.0,
+        "location": "Pune, India",
+        "feels_like": 25.4,
+        "cloud_cover": 17,
+        "last_updated": "2025-10-20 00:00"
+      },
+      "timestamp": "2025-10-20T00:02:07.280359"
+    }
+  ]
+}
