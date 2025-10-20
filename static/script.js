@@ -10,23 +10,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 const reader = new FileReader();
                 
                 reader.onload = function(e) {
-                    // Remove any existing preview
-                    const existingPreview = fileUploadArea.querySelector('.image-preview');
+                    const preview = document.createElement('div');
+                    preview.className = 'relative inline-block';
+                    preview.innerHTML = `
+                        <div class="relative group">
+                            <img src="${e.target.result}" class="h-32 w-32 object-cover rounded-lg" alt="Preview">
+                            <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity" onclick="this.parentElement.parentElement.remove(); fileInput.value = '';">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    `;
+                    
+                    const existingPreview = fileUploadArea.querySelector('.relative.inline-block');
                     if (existingPreview) {
                         existingPreview.remove();
                     }
                     
-                    // Create and display the preview
-                    const preview = document.createElement('img');
-                    preview.src = e.target.result;
-                    preview.classList.add('w-full', 'h-48', 'object-cover', 'rounded-md', 'mb-4', 'image-preview');
-                    fileUploadArea.insertBefore(preview, fileUploadArea.firstChild);
-                    
-                    // Update the upload text
-                    const uploadText = fileUploadArea.querySelector('.upload-text');
-                    if (uploadText) {
-                        uploadText.textContent = file.name;
-                    }
+                    fileUploadArea.appendChild(preview);
                 };
                 
                 reader.readAsDataURL(file);
@@ -34,14 +36,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Drag and drop functionality
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            fileUploadArea.addEventListener(eventName, preventDefaults, false);
-        });
-        
         function preventDefaults(e) {
             e.preventDefault();
             e.stopPropagation();
         }
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileUploadArea.addEventListener(eventName, preventDefaults, false);
+        });
         
         ['dragenter', 'dragover'].forEach(eventName => {
             fileUploadArea.addEventListener(eventName, highlight, false);
@@ -66,37 +68,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const files = dt.files;
             fileInput.files = files;
             
-            // Trigger change event
             const event = new Event('change');
             fileInput.dispatchEvent(event);
         }
-    }
-    
-    // Form submission handling
-    const form = document.querySelector('form');
-    if (form) {
-        form.addEventListener('submit', function(e) {
-            const fileInput = document.getElementById('file-upload');
-            const submitButton = form.querySelector('button[type="submit"]');
-            
-            if (fileInput.files.length === 0) {
-                e.preventDefault();
-                showAlert('Please select an image file to upload.', 'error');
-                return;
-            }
-            
-            // Show loading state
-            if (submitButton) {
-                submitButton.disabled = true;
-                submitButton.innerHTML = `
-                    <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Analyzing...
-                `;
-            }
-        });
     }
     
     // Show alert function
@@ -108,32 +82,30 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // Create alert element
-        const alert = document.createElement('div');
-        alert.className = `alert-message fixed bottom-4 right-4 p-4 rounded-lg shadow-lg text-white ${
-            type === 'error' ? 'bg-red-500' : 'bg-green-500'
-        }`;
-        alert.textContent = message;
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert-message p-4 mb-4 rounded-lg ${type === 'error' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`;
+        alertDiv.role = 'alert';
+        alertDiv.textContent = message;
         
-        // Add close button
-        const closeButton = document.createElement('button');
-        closeButton.className = 'ml-4';
-        closeButton.innerHTML = '&times;';
-        closeButton.onclick = () => alert.remove();
-        alert.appendChild(closeButton);
+        // Insert alert at the top of the form
+        const form = document.querySelector('form');
+        if (form) {
+            form.prepend(alertDiv);
+        } else {
+            document.body.prepend(alertDiv);
+        }
         
-        // Add to page
-        document.body.appendChild(alert);
-        
-        // Auto-remove after 5 seconds
+        // Auto-remove alert after 5 seconds
         setTimeout(() => {
-            alert.style.opacity = '0';
-            setTimeout(() => alert.remove(), 300);
+            alertDiv.remove();
         }, 5000);
     }
     
     // Initialize tooltips if using any
-    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
+    if (typeof bootstrap !== 'undefined') {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
 });

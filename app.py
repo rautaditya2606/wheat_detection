@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, session
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, session, send_from_directory
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 # CSRF protection removed for development
@@ -131,6 +131,23 @@ def logout():
 def index():
     return render_template('index.html', current_user=current_user)
 
+@app.route('/result')
+def result():
+    label = request.args.get('label', 'Unknown')
+    image_path = request.args.get('image_path', '')
+    weather_data = request.args.get('weather_data', '{}')
+    
+    try:
+        weather_data = json.loads(weather_data)
+    except (json.JSONDecodeError, TypeError):
+        weather_data = {}
+    
+    return render_template('result.html',
+                         label=label,
+                         image_path=image_path,
+                         weather_data=weather_data,
+                         current_user=current_user)
+
 @app.route('/questionnaire')
 @login_required
 def questionnaire():
@@ -144,57 +161,85 @@ def questionnaire():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    if 'file' not in request.files:
-        flash('No file uploaded', 'danger')
-        return redirect(request.url)
-    
-    file = request.files['file']
-    if file.filename == '':
-        flash('No file selected', 'danger')
-        return redirect(request.url)
-    
     try:
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        # Open image and preprocess
-        image = Image.open(filepath).convert("RGB")
-        input_tensor = transform(image).unsqueeze(0).to(device)
-
-        # Predict
-        with torch.no_grad():
-            outputs = model(input_tensor)
-            predicted_class = torch.argmax(outputs, 1).item()
-            predicted_label = CLASS_NAMES[predicted_class]
+        app.logger.info("Received request to /predict endpoint")
         
-        # Get weather data
-        weather_data = get_weather_data()
+        if 'file' not in request.files:
+            app.logger.error("No file part in the request")
+            return jsonify({'error': 'No file part'}), 400
         
-        # If user is logged in, show questionnaire, else show basic result
-        if current_user.is_authenticated:
-            return render_template(
-                'result.html', 
-                label=predicted_label, 
-                image_path=filepath,
-                weather_data=weather_data,
-                show_questionnaire=True,
-                questionnaire=QUESTIONNAIRE
-            )
-        else:
-            return render_template(
-                'result.html',
-                label=predicted_label,
-                image_path=filepath,
-                weather_data=weather_data,
-                show_questionnaire=False
-            )
-    
+        file = request.files['file']
+        if file.filename == '':
+            app.logger.error("No file selected")
+            return jsonify({'error': 'No selected file'}), 400
+        
+        # Check file extension
+        allowed_extensions = {'png', 'jpg', 'jpeg'}
+        if '.' not in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+            app.logger.error(f"Invalid file type: {file.filename}")
+            return jsonify({'error': 'Invalid file type. Please upload a PNG, JPG, or JPEG image.'}), 400
+        
+        try:
+            # Ensure upload directory exists
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+            # Save uploaded file
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            app.logger.info(f"File saved to {filepath}")
+
+            # Open and verify image
+            try:
+                image = Image.open(filepath).convert("RGB")
+                # Verify it's a valid image by trying to load it
+                image.verify()
+                image = Image.open(filepath).convert("RGB")
+            except Exception as e:
+                app.logger.error(f"Invalid image file: {str(e)}")
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({'error': 'Invalid image file'}), 400
+
+            # Preprocess and predict
+            try:
+                input_tensor = transform(image).unsqueeze(0).to(device)
+                with torch.no_grad():
+                    outputs = model(input_tensor)
+                    predicted_class = torch.argmax(outputs, 1).item()
+                    predicted_label = CLASS_NAMES.get(predicted_class, 'Unknown')
+                
+                # Get weather data
+                weather_data = get_weather_data()
+                
+                # Prepare response data
+                response_data = {
+                    'success': True,
+                    'label': predicted_label,
+                    'image_url': f'/uploads/{os.path.basename(filepath)}',
+                    'weather_data': weather_data,
+                    'show_questionnaire': current_user.is_authenticated,
+                    'redirect_url': url_for('result', 
+                                         label=predicted_label, 
+                                         image_path=f'/uploads/{os.path.basename(filepath)}',
+                                         weather_data=json.dumps(weather_data),
+                                         _external=True)
+                }
+                
+                app.logger.info(f"Prediction successful: {predicted_label}")
+                return jsonify(response_data)
+                
+            except Exception as e:
+                app.logger.error(f"Error during prediction: {str(e)}", exc_info=True)
+                return jsonify({'error': 'Error processing image'}), 500
+            
+        except Exception as e:
+            app.logger.error(f"Error processing file: {str(e)}", exc_info=True)
+            return jsonify({'error': 'Error processing file'}), 500
+            
     except Exception as e:
-        app.logger.error(f"Error during prediction: {str(e)}")
-        flash('An error occurred while processing your request. Please try again.', 'danger')
-        return redirect(url_for('index'))
+        app.logger.error(f"Unexpected error in predict route: {str(e)}", exc_info=True)
+        return jsonify({'error': 'An unexpected error occurred'}), 500
 
 @app.route('/update-location', methods=['POST'])
 @login_required
@@ -331,6 +376,78 @@ def update_answers():
             'error': 'An error occurred while updating your answers.'
         }), 500
 
+
+@app.route('/get-recommendations', methods=['POST'])
+@login_required
+def get_recommendations():
+    try:
+        data = request.get_json()
+        
+        # Get weather data with proper structure
+        weather_data = data.get('weather_data', {})
+        if isinstance(weather_data, str):
+            try:
+                weather_data = json.loads(weather_data)
+            except json.JSONDecodeError:
+                weather_data = {}
+        
+        # Prepare user data with proper structure for Gemini API
+        user_data = {
+            'user_id': current_user.id,
+            'location': {
+                'city': data.get('city', 'Unknown'),
+                'region': data.get('region', 'Unknown'),
+                'country': data.get('country', 'IN'),
+                'loc': data.get('loc', '0,0'),
+                'timezone': data.get('timezone', 'Asia/Kolkata')
+            },
+            'weather': {
+                'temp_c': weather_data.get('temperature', weather_data.get('temp_c', 25.0)),
+                'humidity': weather_data.get('humidity', 60),
+                'condition': weather_data.get('conditions', weather_data.get('condition', 'Clear')),  # Handle both 'condition' and 'conditions'
+                'wind_kph': weather_data.get('wind_speed', weather_data.get('wind_kph', 10.0)),
+                'precip_mm': weather_data.get('precipitation', weather_data.get('precip_mm', 0.0)),
+                'last_updated': weather_data.get('last_updated', '2023-10-20 12:00')
+            },
+            'questionnaire_answers': getattr(current_user, 'questionnaire_responses', {}) or {},
+            'crop_condition': 'Healthy' if data.get('disease') == 'Healthy' else 'Affected',
+            'disease_detected': data.get('disease', 'None')
+        }
+        
+        # Get recommendations from Gemini
+        try:
+            from test_gemini_integration import get_gemini_recommendation
+            result = get_gemini_recommendation(user_data)
+            
+            if result['status'] == 'success':
+                return jsonify({
+                    'status': 'success',
+                    'recommendation': result['recommendation']
+                })
+            else:
+                app.logger.error(f"Gemini API error: {result.get('message', 'Unknown error')}")
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Failed to generate recommendations. Please try again.'
+                }), 400
+                
+        except ImportError as ie:
+            app.logger.error(f"Failed to import Gemini module: {str(ie)}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Recommendation service is currently unavailable.'
+            }), 500
+            
+    except Exception as e:
+        app.logger.error(f"Error in get_recommendations: {str(e)}", exc_info=True)
+        return jsonify({
+            'status': 'error',
+            'message': f'An error occurred: {str(e)}'
+        }), 500
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
     # Create admin user if not exists

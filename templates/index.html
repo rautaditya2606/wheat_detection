@@ -4,15 +4,15 @@
 <div class="max-w-3xl mx-auto bg-white rounded-lg shadow-lg p-8">
     <h2 class="text-2xl font-semibold text-gray-800 mb-6">Upload Wheat Image</h2>
     
-    <form action="/predict" method="post" enctype="multipart/form-data" class="space-y-6">
-        <div class="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-8 bg-gray-50 hover:bg-gray-100 transition-colors">
+    <form id="uploadForm" method="post" enctype="multipart/form-data" class="space-y-6">
+        <div class="file-upload-area flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-8 bg-gray-50 hover:bg-gray-100 transition-colors">
             <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
             </svg>
-            <p class="text-gray-600 mb-4">Upload an image of wheat crop or leaves</p>
+            <p class="upload-text text-gray-600 mb-4">Drag & drop an image here or click to select</p>
             <div class="relative">
-                <input type="file" name="file" id="fileInput" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
-                <label for="fileInput" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer transition-colors">
+                <input type="file" name="file" id="file-upload" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                <label for="file-upload" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer transition-colors">
                     Choose Image
                 </label>
             </div>
@@ -23,16 +23,146 @@
             Analyze Image
         </button>
     </form>
-    
     <div class="mt-8 text-center text-gray-600">
         <p>Supported formats: JPG, JPEG, PNG</p>
     </div>
 </div>
 
-<script>
-    document.getElementById('fileInput').addEventListener('change', function(e) {
-        const fileName = e.target.files[0] ? e.target.files[0].name : 'No file chosen';
-        document.getElementById('fileName').textContent = fileName;
-    });
-</script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const fileInput = document.getElementById('file-upload');
+            const uploadForm = document.getElementById('uploadForm');
+            const analyzeBtn = uploadForm ? uploadForm.querySelector('button[type="submit"]') : null;
+            const fileNameDisplay = document.getElementById('fileName');
+            
+            if (!uploadForm || !analyzeBtn || !fileInput) {
+                console.error('Required form elements not found');
+                return;
+            }
+            
+            // Update file name display
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files && e.target.files[0];
+                const fileName = file ? file.name : 'No file chosen';
+                fileNameDisplay.textContent = fileName;
+                
+                // Update button state
+                updateButtonState(!!file);
+            });
+            
+            // Handle form submission
+            uploadForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const file = fileInput.files && fileInput.files[0];
+                if (!file) {
+                    showAlert('Please select an image to analyze', 'error');
+                    return false;
+                }
+                
+                // Show loading state
+                const originalText = analyzeBtn.innerHTML;
+                analyzeBtn.disabled = true;
+                analyzeBtn.innerHTML = 'Analyzing... <i class="fas fa-spinner fa-spin ml-2"></i>';
+                analyzeBtn.classList.add('opacity-75');
+                
+                try {
+                    const formData = new FormData(uploadForm);
+                    const response = await fetch('/predict', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const error = await response.text();
+                        throw new Error(error || 'Failed to process image');
+                    }
+                    
+                    // Check if response is JSON
+                    const contentType = response.headers.get('content-type');
+                    if (contentType && contentType.includes('application/json')) {
+                        const data = await response.json();
+                        
+                        if (data.redirect_url) {
+                            window.location.href = data.redirect_url;
+                        } else if (data.error) {
+                            throw new Error(data.error);
+                        } else if (data.success) {
+                            // If we have the data, render the result directly
+                            const resultUrl = new URL(window.location.href);
+                            resultUrl.pathname = '/result';
+                            resultUrl.search = new URLSearchParams({
+                                label: data.label,
+                                image_path: data.image_url,
+                                weather_data: JSON.stringify(data.weather_data)
+                            }).toString();
+                            window.location.href = resultUrl.toString();
+                        } else {
+                            window.location.reload();
+                        }
+                    } else {
+                        // If not JSON, assume it's HTML content
+                        const html = await response.text();
+                        document.open();
+                        document.write(html);
+                        document.close();
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    showAlert(error.message || 'An error occurred. Please try again.', 'error');
+                } finally {
+                    analyzeBtn.disabled = false;
+                    analyzeBtn.innerHTML = originalText;
+                    analyzeBtn.classList.remove('opacity-75');
+                }
+                
+                return false;
+            });
+            
+            // Show alert message
+            function showAlert(message, type = 'info') {
+                // Remove any existing alerts
+                const existingAlert = document.querySelector('.alert-message');
+                if (existingAlert) {
+                    existingAlert.remove();
+                }
+                
+                // Create alert element
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert-message fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white ${
+                    type === 'error' ? 'bg-red-500' : 'bg-green-500'
+                }`;
+                alertDiv.textContent = message;
+                
+                // Add close button
+                const closeButton = document.createElement('button');
+                closeButton.className = 'ml-4';
+                closeButton.innerHTML = '&times;';
+                closeButton.onclick = () => alertDiv.remove();
+                alertDiv.appendChild(closeButton);
+                
+                // Add to page
+                document.body.appendChild(alertDiv);
+                
+                // Auto-remove after 5 seconds
+                setTimeout(() => {
+                    alertDiv.style.opacity = '0';
+                    setTimeout(() => alertDiv.remove(), 300);
+                }, 5000);
+            }
+            
+            // Update button state
+            function updateButtonState(isEnabled) {
+                analyzeBtn.disabled = !isEnabled;
+                if (isEnabled) {
+                    analyzeBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    analyzeBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            }
+            
+            // Initial state
+            updateButtonState(false);
+        });
+    </script>
 {% endblock %}
