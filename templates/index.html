@@ -28,6 +28,59 @@
     </div>
 </div>
 
+<!-- How It Works Section -->
+<div class="max-w-3xl mx-auto mt-12 bg-white rounded-lg shadow-lg p-8">
+    <h2 class="text-2xl font-semibold text-gray-800 mb-6">How It Works</h2>
+    
+    <div class="space-y-6">
+        <div class="flex items-start">
+            <div class="flex-shrink-0 bg-green-100 rounded-full p-2">
+                <svg class="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Quick Analysis (No Login Required)</h3>
+                <p class="mt-1 text-gray-600">
+                    Simply upload a photo of your wheat crop to get an instant prediction about its health condition. 
+                    My pre-trained ResNet50(it is trained on ImageNet dataset) model will analyze the image and provide you with a basic assessment in seconds.
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-start">
+            <div class="flex-shrink-0 bg-blue-100 rounded-full p-2">
+                <svg class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+            </div>
+            <div class="ml-4">
+                <h3 class="text-lg font-medium text-gray-900">Personalized Analysis (Login Required)</h3>
+                <p class="mt-1 text-gray-600">
+                    For more detailed and personalized recommendations, create an account and complete our quick questionnaire. 
+                    The questionnaire will ask about your farming practices, location, and crop history to provide tailored advice for your specific situation.
+                </p>
+            </div>
+        </div>
+
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mt-8">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <p class="text-sm text-yellow-700">
+                        <strong>Note:</strong> For the most accurate results, upload photos that are taken in good lighting and ensure the wheat plants are clearly visible. 
+                        The more details the model can see, the better analysis it can provide.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const fileInput = document.getElementById('file-upload');
