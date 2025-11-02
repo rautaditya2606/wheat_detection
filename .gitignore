@@ -1,8 +1,5 @@
 .env
 .env.example
-users.json
-static/uploads
-wheat_resnet50.pt
 __pycache__
 app.db
 

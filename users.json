@@ -1,0 +1,40 @@
+{
+  "1": {
+    "id": "1",
+    "username": "admin",
+    "password_hash": "scrypt:32768:8:1$JTehyYgfcWfIbg8i$50cba730a54390ee29aa18ca4920b5366971b8e61cc498c9d6016c55e6e1f3c8ae55df05787d08c4f397686946fe23bae8dc9bb02e39a3d6bd68bdd01101b3e8",
+    "email": "admin@example.com",
+    "manual_location": null,
+    "weather_data": {},
+    "questionnaire_responses": {}
+  },
+  "2": {
+    "id": "2",
+    "username": "rautaditya2606",
+    "password_hash": "scrypt:32768:8:1$RTzLura3brlnWwtl$c4634cc53bfc2886b77a390654ff22b5bd6fd5372d14e3ed6fb36bdd4114ec0b7990e682c0e10b2c90af6b771211bb88b6aec1dd44788c06d3ec466bdf9c595c",
+    "email": "rautaditya2606@gmail.com",
+    "manual_location": "Mumbai",
+    "weather_data": {
+      "temperature": 30.1,
+      "humidity": 66,
+      "conditions": "Mist",
+      "wind_speed": 8.3,
+      "wind_dir": "NNE",
+      "precipitation": 0.0,
+      "location": "Mumbai, India",
+      "feels_like": 35.8,
+      "cloud_cover": 0,
+      "last_updated": "2025-10-20 00:45"
+    },
+    "questionnaire_responses": {
+      "soil_type": "Silty",
+      "fertilizer_used": "Vermicompost",
+      "pesticide_used": "Herbicides",
+      "crop_rotation": "Yes",
+      "irrigation_method": "Drip",
+      "previous_crop": "corn",
+      "planting_date": "2020-12-12",
+      "additional_notes": ""
+    }
+  }
+}
