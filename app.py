@@ -1,3 +1,6 @@
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, session, send_from_directory
 from asgiref.wsgi import WsgiToAsgi
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
@@ -14,6 +17,8 @@ from models import user_db, User
 from user_data import user_data, QUESTIONNAIRE
 from utils import get_weather_data, get_llm_recommendation
 from location import location_bp, get_ip_geolocation, reverse_geocode
+
+
 
 app = Flask(__name__)
 load_dotenv()
