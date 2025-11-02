@@ -57,8 +57,8 @@ CLASS_NAMES = {
     11: 'Smut', 12: 'Stem fly', 13: 'Tan spot', 14: 'Yellow Rust'
 }
 
-# Load model
-model = models.resnet50(pretrained=False)
+# Load model with updated weights parameter
+model = models.resnet50(weights=None)  # Using weights=None instead of pretrained=False
 model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
 
 # Load state_dict and fix 'module.' prefix if present
