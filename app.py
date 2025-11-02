@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, session, send_from_directory
+from asgiref.wsgi import WsgiToAsgi
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 # CSRF protection removed for development
@@ -449,10 +450,17 @@ def get_recommendations():
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
+# Create ASGI application
+asgi_app = WsgiToAsgi(app)
+
 if __name__ == '__main__':
     # Create admin user if not exists
     if not user_db.get_user_by_username('admin'):
         admin = user_db.add_user('admin', 'admin123', 'admin@example.com')
     
-    # Run the Flask app
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
+    # For development, you can still run with Flask's development server
+    if os.environ.get('ENV') == 'development':
+        app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
+    else:
+        import uvicorn
+        uvicorn.run(asgi_app, host='0.0.0.0', port=5000)
