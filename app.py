@@ -6,8 +6,8 @@ from asgiref.wsgi import WsgiToAsgi
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 # CSRF protection removed for development
-import torch
-from torchvision import models, transforms
+import onnxruntime as ort
+import numpy as np
 from PIL import Image
 import os
 from collections import OrderedDict
@@ -48,12 +48,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('data', exist_ok=True)
 
-# Device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Number of classes
-NUM_CLASSES = 15
-
 # Disease labels
 CLASS_NAMES = {
     0: 'Aphid', 1: 'Black Rust', 2: 'Blast', 3: 'Brown Rust',
@@ -62,28 +56,37 @@ CLASS_NAMES = {
     11: 'Smut', 12: 'Stem fly', 13: 'Tan spot', 14: 'Yellow Rust'
 }
 
-# Load model with updated weights parameter
-model = models.resnet50(weights=None)  # Using weights=None instead of pretrained=False
-model.fc = torch.nn.Linear(model.fc.in_features, NUM_CLASSES)
+# Load ONNX model
+try:
+    ort_session = ort.InferenceSession("wheat_resnet50.onnx")
+except Exception as e:
+    print(f"Error loading ONNX model: {e}")
+    ort_session = None
 
-# Load state_dict and fix 'module.' prefix if present
-state_dict = torch.load('wheat_resnet50.pt', map_location=device)
-new_state_dict = OrderedDict()
-for k, v in state_dict.items():
-    name = k.replace('module.', '')
-    new_state_dict[name] = v
-
-model.load_state_dict(new_state_dict)
-model = model.to(device)
-model.eval()
-
-# Image transforms
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225])
-])
+def preprocess_image(image):
+    # Resize to 224x224
+    image = image.resize((224, 224))
+    
+    # Convert to numpy array and normalize
+    # PIL image is RGB, 0-255
+    img_data = np.array(image).astype('float32')
+    
+    # Normalize to 0-1
+    img_data /= 255.0
+    
+    # Normalize with mean and std
+    mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+    std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+    
+    img_data = (img_data - mean) / std
+    
+    # Transpose to (Channels, Height, Width) -> (3, 224, 224)
+    img_data = img_data.transpose(2, 0, 1)
+    
+    # Add batch dimension -> (1, 3, 224, 224)
+    img_data = np.expand_dims(img_data, axis=0)
+    
+    return img_data
 
 # Authentication Routes
 
@@ -139,14 +142,15 @@ def index():
 
 @app.route('/result')
 def result():
-    label = request.args.get('label', 'Unknown')
-    image_path = request.args.get('image_path', '')
-    weather_data = request.args.get('weather_data', '{}')
+    # Retrieve data from session
+    result_data = session.get('prediction_result', {})
     
-    try:
-        weather_data = json.loads(weather_data)
-    except (json.JSONDecodeError, TypeError):
-        weather_data = {}
+    label = result_data.get('label', 'Unknown')
+    image_path = result_data.get('image_path', '')
+    weather_data = result_data.get('weather_data', {})
+    
+    # Clear session data after retrieval (optional, keeps session clean)
+    # session.pop('prediction_result', None)
     
     return render_template('result.html',
                          label=label,
@@ -209,11 +213,13 @@ def predict():
 
             # Preprocess and predict
             try:
-                input_tensor = transform(image).unsqueeze(0).to(device)
-                with torch.no_grad():
-                    outputs = model(input_tensor)
-                    predicted_class = torch.argmax(outputs, 1).item()
-                    predicted_label = CLASS_NAMES.get(predicted_class, 'Unknown')
+                # ONNX Inference
+                input_data = preprocess_image(image)
+                ort_inputs = {ort_session.get_inputs()[0].name: input_data}
+                ort_outs = ort_session.run(None, ort_inputs)
+                outputs = ort_outs[0]
+                predicted_class = np.argmax(outputs)
+                predicted_label = CLASS_NAMES.get(int(predicted_class), 'Unknown')
                 
                 # Get weather data
                 weather_data = get_weather_data()
@@ -225,11 +231,14 @@ def predict():
                     'image_url': f'/uploads/{os.path.basename(filepath)}',
                     'weather_data': weather_data,
                     'show_questionnaire': current_user.is_authenticated,
-                    'redirect_url': url_for('result', 
-                                         label=predicted_label, 
-                                         image_path=f'/uploads/{os.path.basename(filepath)}',
-                                         weather_data=json.dumps(weather_data),
-                                         _external=True)
+                    'redirect_url': url_for('result')
+                }
+                
+                # Store result in session
+                session['prediction_result'] = {
+                    'label': predicted_label,
+                    'image_path': f'/uploads/{os.path.basename(filepath)}',
+                    'weather_data': weather_data
                 }
                 
                 app.logger.info(f"Prediction successful: {predicted_label}")

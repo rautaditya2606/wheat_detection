@@ -1,53 +1,52 @@
 import os
-import requests
 import json
+import requests
 from dotenv import load_dotenv
-import google.generativeai as genai
 
 # Load environment variables
 load_dotenv()
 
-# Configure Gemini API
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in environment variables")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-genai.configure(api_key=GEMINI_API_KEY)
-
-# Sample user data (replace with actual data in a real scenario)
+# Sample user data for testing
 sample_user_data = {
-    "user_id": "user123",
+    "user_id": "test_user_123",
     "location": {
-        "ip": "8.8.8.8",  # Example IP
-        "city": "Mumbai",
+        "city": "Pune",
         "region": "Maharashtra",
-        "country": "IN",
-        "loc": "19.0760,72.8777",  # Mumbai coordinates
+        "country": "India",
+        "loc": "18.5204,73.8567",
         "timezone": "Asia/Kolkata"
     },
     "weather": {
-        "temp_c": 28.0,
-        "humidity": 70,
+        "temp_c": 28.5,
+        "humidity": 65,
         "condition": "Partly cloudy",
-        "wind_kph": 10.0,
+        "wind_kph": 12.5,
         "precip_mm": 0.0,
-        "last_updated": "2023-10-20 11:30"
+        "last_updated": "2023-10-26 14:30"
     },
     "questionnaire_answers": {
-        "farm_size": "2-5 hectares",
-        "soil_type": "Black soil",
-        "irrigation_type": "Drip irrigation",
-        "previous_crop": "Soybean",
-        "fertilizer_used": "Urea, DAP",
-        "pest_issues": "Aphids, Rust"
+        "soil_type": "Black Soil",
+        "irrigation_method": "Drip Irrigation",
+        "fertilizer_used": "NPK 19:19:19",
+        "crop_stage": "Flowering",
+        "sowing_date": "2023-11-15"
     },
-    "crop_condition": "Healthy",  # From image analysis
-    "disease_detected": "None"     # From image analysis
+    "crop_condition": "Yellowing leaves",
+    "disease_detected": "Yellow Rust"
 }
+
 def get_gemini_recommendation(user_data):
     """
-    Send user data to Gemini 2.5 Flash model using direct REST API call.
+    Get recommendations from Gemini API based on user data.
     """
+    if not GEMINI_API_KEY:
+        return {
+            "status": "error",
+            "message": "GEMINI_API_KEY not found in environment variables"
+        }
+
     try:
         # Debug: Print the received user_data
         print("Debug - User Data Received:", json.dumps(user_data, indent=2))
@@ -56,6 +55,10 @@ def get_gemini_recommendation(user_data):
         weather = user_data.get('weather', {})
         weather_condition = weather.get('condition') or weather.get('conditions', 'Clear')
         
+        # Extract questionnaire answers
+        answers = user_data.get('questionnaire_answers', {})
+        answers_str = "\n        ".join([f"- {k.replace('_', ' ').title()}: {v}" for k, v in answers.items()]) if answers else "- No questionnaire data available"
+
         # Format the prompt with user data
         prompt = f"""
         You are an agricultural expert providing recommendations to a wheat farmer.
@@ -66,13 +69,35 @@ def get_gemini_recommendation(user_data):
         - Crop Condition: {user_data.get('crop_condition', 'Unknown')}
         - Disease Detected: {user_data.get('disease_detected', 'None')}
         
-        Please provide:
-        1. Brief analysis of the current farming conditions (max 3 sentences)
-        2. Top 3 recommendations for crop management
-        3. Any immediate actions needed (if any)
-        4. Preventive measures for common issues in this region (max 3)
+        Additional Farm Details:
+        {answers_str}
         
-        Keep the response concise and actionable.
+        Please provide a comprehensive, detailed, and elaborative response in HTML format (do not use markdown code blocks, just raw HTML).
+        The response should be in-depth, explaining the 'why' and 'how' for each recommendation.
+        
+        Use the following structure:
+        
+        <h3>Detailed Analysis</h3>
+        <p>...provide a deep analysis of the conditions, explaining how the weather, location, and specific farm details interact with the detected disease or crop condition...</p>
+        
+        <h3>Comprehensive Recommendations</h3>
+        <ul>
+            <li><strong>Recommendation 1:</strong> ...provide detailed steps, dosage (if applicable), and timing...</li>
+            <li><strong>Recommendation 2:</strong> ...explain the expected outcome and why this is recommended...</li>
+            <li><strong>Recommendation 3:</strong> ...include alternative options if available...</li>
+        </ul>
+        
+        <h3>Immediate Actions Required</h3>
+        <ul>
+            <li>...urgent steps to take immediately to mitigate damage...</li>
+        </ul>
+        
+        <h3>Long-term Preventive Measures</h3>
+        <ul>
+            <li>...strategies to prevent recurrence in future seasons...</li>
+        </ul>
+        
+        Make the content very informative, educational, and actionable for the farmer. Avoid brevity; prioritize clarity and depth.
         """
         
         # API endpoint
@@ -92,7 +117,7 @@ def get_gemini_recommendation(user_data):
                 "temperature": 0.7,
                 "topP": 0.8,
                 "topK": 40,
-                "maxOutputTokens": 1024
+                "maxOutputTokens": 4096
             }
         }
         
