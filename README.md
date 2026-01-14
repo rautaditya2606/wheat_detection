@@ -5,7 +5,7 @@ A web application that uses deep learning to identify wheat diseases from images
 
 ## Features
 
-- Upload images of wheat crops or leaves
+- **Wheat-Specific Analysis**: Upload images of wheat crops or leaves only for accurate diagnosis.
 - Get instant predictions about potential diseases
 - View confidence scores for predictions
 - Mobile-responsive design

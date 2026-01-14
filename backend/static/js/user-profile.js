@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     answersModal.classList.remove('hidden');
                 } else {
                     alert('Error loading your answers: ' + (data.error || 'No answers found'));
-                }Uncaught SyntaxError: Unexpected token ')' (at user-profile.js:292:17)
+                }
             }) 
             .catch(error => {
                 console.error('Error:', error);
