@@ -1,80 +1,90 @@
-034dcf5fc6cd4a3eaf1175716251910
-# Wheat Disease Classifier
+# Wheat Health & Disease Diagnostics System
 
-A web application that uses deep learning to identify wheat diseases from images of wheat crops and leaves.
+An advanced AI-driven platform for wheat crop disease classification, real-time environmental analysis, and personalized treatment recommendations.
 
-## Features
+## 🌟 Key Features
 
-- **Wheat-Specific Analysis**: Upload images of wheat crops or leaves only for accurate diagnosis.
-- Get instant predictions about potential diseases
-- View confidence scores for predictions
-- Mobile-responsive design
-- Drag and drop file upload
+- **High-Accuracy AI Diagnostics**: Uses an optimized **ResNet50 ONNX model** to identify 15 different wheat conditions and diseases with high precision.
+- **Expert AI Recommendations**: Integrated with **Google Gemini (gemini-3-flash-preview)** to provide step-by-step treatment plans, immediate actions, and long-term prevention strategies.
+- **Context-Aware Analysis**: Automatically fetches real-time **weather conditions** (Temperature, Humidity, Precipitation) and **geolocation** to tailor recommendations to your specific environment.
+- **Comprehensive PDF Reporting**: Generate and download professional PDF reports containing analysis results, uploaded images, and expert-level treatment plans.
+- **Secure Farmer Accounts**: Personalized dashboard and secure authentication to track crop history and questionnaire data.
+- **Responsive UI**: Built with a modern, mobile-first design using Tailwind CSS for field-access.
 
-## Prerequisites
+## 🛠️ Tech Stack
 
-- Python 3.7 or higher
-- pip (Python package manager)
+- **Backend**: Python (Flask, Uvicorn, ASGI)
+- **AI/ML**: ONNX Runtime, PyTorch (Training), NumPy, Pillow
+- **LLM**: Google Generative AI (Gemini 1.5 & Flash Preview)
+- **Frontend**: HTML5, Tailwind CSS, JavaScript (ES6+)
+- **Reporting**: ReportLab (PDF Generation)
+- **External APIs**: Google Gemini API, WeatherAPI, GeoIP2
 
-## Installation
+## 🚀 Getting Started
 
-1. Clone the repository:
+### Prerequisites
+- Python 3.10 or higher
+- [Gemini API Key](https://aistudio.google.com/)
+- [WeatherAPI Key](https://www.weatherapi.com/)
+
+### Installation
+
+1. **Clone the repository**:
    ```bash
    git clone https://github.com/rautaditya2606/wheat_detection.git
-   cd wheat-disease-classifier
+   cd wheat_detection
    ```
 
-2. Create a virtual environment (recommended):
+2. **Set up the backend**:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use: venv\Scripts\activate
-   ```
-
-3. Install the required packages:
-   ```bash
+   cd backend
    pip install -r requirements.txt
    ```
 
-## Running the Application
-
-1. Make sure you have the model file `wheat_resnet50.pt` in the project root directory.
-
-2. Start the Flask development server:
-   ```bash
-   python app.py
+3. **Configure Environment Variables**:
+   Create a `.env` file in the `backend/` directory:
+   ```env
+   SECRET_KEY=your_secret_key
+   GEMINI_API_KEY=your_gemini_api_key
+   WEATHER_API_KEY=your_weather_api_key
    ```
 
-3. Open your web browser and navigate to:
-   ```
-   http://localhost:5000
-   ```
+### Running the App
 
-## Project Structure
-
+Start the server from the `backend/` directory:
+```bash
+python app.py
 ```
-wheat-disease-classifier/
-├── app.py                 # Main Flask application
-├── requirements.txt        # Python dependencies
-├── wheat_resnet50.pt      # Pre-trained model
-├── static/                # Static files (CSS, JS, uploads)
-│   ├── style.css
-│   └── script.js
-├── templates/             # HTML templates
-│   ├── base.html
-│   ├── index.html
-│   └── result.html
+The application will be accessible at `http://localhost:10000`.
+
+## 📁 Project Structure
+
+```text
+/
+├── backend/
+│   ├── app.py              # Main ASGI/Flask Application
+│   ├── models.py           # User & Database models
+│   ├── utils.py            # Gemini & Weather utilities
+│   ├── location.py         # Geolocation logic
+│   ├── wheat_resnet50.onnx # AI Detection Model
+│   ├── templates/          # Jinja2 HTML Templates
+│   ├── static/             # CSS (Tailwind), JS, and Uploads
+│   └── tests/              # Performance & Integration tests
+├── docs/                   # feature documentation
 └── README.md
 ```
 
-## Model Information
+## 🧠 Model Information
 
-The application uses a pre-trained ResNet50 model that has been fine-tuned for wheat disease classification. The model can identify 15 different wheat conditions including healthy plants and various diseases.
+The core classification engine uses a **Convolutional Neural Network (ResNet50)** fine-tuned on specialized wheat disease datasets. For production efficiency, the model is exported to **ONNX format**, ensuring sub-second inference times even on CPU environments.
 
-## License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## 🤝 Contributing
 
-- Thanks to the researchers and developers who contributed to the wheat disease dataset and model training.
-- Built with Flask, PyTorch, and Tailwind CSS.
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+---
+*Developed for efficient and sustainable wheat farming diagnostics.*
