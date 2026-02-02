@@ -63,28 +63,46 @@ def get_openai_recommendation(user_data):
     )
 
     prompt = f"""
-You are an agricultural expert providing recommendations to a wheat farmer.
+You are an expert agricultural scientist and wheat production specialist. 
+Provide a professional, highly structured recommendation for a farmer whose crop is affected.
 
-Farmer's Information:
-- Location: {user_data.get('location', {}).get('city', 'Unknown')}, 
-  {user_data.get('location', {}).get('region', 'Unknown')}, 
-  {user_data.get('location', {}).get('country', 'Unknown')}
-- Current Weather: {weather_condition}, Temperature: {weather.get('temp_c', 25.0)}°C
-- Crop Condition: {user_data.get('crop_condition', 'Unknown')}
-- Disease Detected: {user_data.get('disease_detected', 'None')}
+FARMER'S CURRENT CONTEXT:
+- Location: {user_data.get('location', {}).get('city', 'Unknown')}, {user_data.get('location', {}).get('country', 'Unknown')}
+- Environmental Data: {weather_condition}, {weather.get('temp_c', 25.0)}°C, Humidity: {weather.get('humidity', 'N/A')}%
+- Health Status: {user_data.get('crop_condition', 'Unknown')}
+- Identified Issue: {user_data.get('disease_detected', 'None')}
 
-Additional Farm Details:
+ADDITIONAL FARM PARAMETERS:
 {answers_str}
 
-Return a detailed HTML response using:
-- <h3> for section titles
-- <ul><li> for points
-- <strong> for emphasis
+REQUIRED OUTPUT FORMAT:
+Return the recommendation as a sequence of DIV blocks. Use the following structure exactly:
 
-Sections:
-1. Detailed Analysis
-2. Immediate Actions Required
-3. Long-term Preventive Measures
+<div class="analysis-section mb-6">
+  <h3 class="text-xl font-bold text-blue-800 border-b-2 border-blue-200 pb-2 mb-4">I. Scientific Analysis</h3>
+  <p class="text-gray-700 leading-relaxed mb-4">[Provide a brief scientific explanation of the {user_data.get('disease_detected')} and how current weather ({weather_condition}) influences it.]</p>
+</div>
+
+<div class="actions-section mb-6 bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
+  <h3 class="text-xl font-bold text-red-800 mb-3">II. Immediate Rescue Actions</h3>
+  <ul class="list-disc pl-5 space-y-2">
+    <li><strong>[Action Name]:</strong> [Clear description of what to do now]</li>
+    <li><strong>[Dosage/Application]:</strong> [Mention specific organic or chemical treatment types appropriate for this disease]</li>
+  </ul>
+</div>
+
+<div class="prevention-section mb-6 bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
+  <h3 class="text-xl font-bold text-green-800 mb-3">III. Long-term Management Plan</h3>
+  <ul class="list-disc pl-5 space-y-2">
+    <li><strong>Soil Management:</strong> [Advice based on the provided soil type or general fertility]</li>
+    <li><strong>Strategy:</strong> [Advice on irrigation or rotation mentioned in farm details]</li>
+  </ul>
+</div>
+
+INSTRUCTIONS:
+- Use professional yet accessible language.
+- Ensure the HTML is valid.
+- DO NOT use markdown symbols like # or * within the code.
 """
 
     for attempt in range(3):
@@ -94,7 +112,7 @@ Sections:
             response = client.chat.completions.create(
                 model=MODEL_TO_USE,
                 messages=[
-                    {"role": "system", "content": "You are a helpful agricultural expert."},
+                    {"role": "system", "content": "You are an expert agricultural consultant specializing in wheat pathology and sustainable farming."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.4,

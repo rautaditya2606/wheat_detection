@@ -714,16 +714,36 @@ def export_report():
 
     # Recommendation Content
     story.append(Paragraph("Expert Recommendations", section_style))
+    story.append(Spacer(1, 10))
     
-    # Simple HTML cleaning for PDF (replace basic tags)
-    clean_rec = recommendation.replace('<h3>', '<br/><font color="indigo"><b>').replace('</h3>', '</b></font><br/>')
-    clean_rec = clean_rec.replace('<ul>', '').replace('</ul>', '')
-    clean_rec = clean_rec.replace('<li>', '&bull; ').replace('</li>', '<br/>')
-    clean_rec = clean_rec.replace('<strong>', '<b>').replace('</strong>', '</b>')
-    # Remove any other HTML tags
-    clean_rec = re.sub('<[^<]+?>', '', clean_rec)
+    # Improved HTML cleaning for PDF
+    # Convert div sections to bold headers and spacing for PDF
+    processed_rec = recommendation
+    # Replace headers
+    processed_rec = re.sub(r'<h3[^>]*>(.*?)</h3>', r'<br/><font color="darkblue" size="14"><b>\1</b></font><br/>', processed_rec)
+    # Replace list items
+    processed_rec = processed_rec.replace('<li>', '&bull; ').replace('</li>', '<br/>')
+    processed_rec = processed_rec.replace('<ul>', '').replace('</ul>', '')
+    # Replace bold
+    processed_rec = processed_rec.replace('<strong>', '<b>').replace('</strong>', '</b>')
+    # Remove div tags but keep content
+    processed_rec = re.sub(r'<div[^>]*>', '', processed_rec)
+    processed_rec = processed_rec.replace('</div>', '<br/>')
     
-    story.append(Paragraph(clean_rec, styles['BodyText']))
+    # Strip any remaining tags that ReportLab Paragraph doesn't support
+    # (ReportLab only supports a small subset like <b>, <i>, <u>, <font>, <br/>, <a>)
+    clean_rec = re.sub(r'<(?!b|/b|i|/i|u|/u|font|/font|br|/br|a|/a)[^>]+>', '', processed_rec)
+    
+    # Normalize line breaks
+    clean_rec = clean_rec.replace('\n', ' ').strip()
+    
+    try:
+        story.append(Paragraph(clean_rec, styles['BodyText']))
+    except Exception as e:
+        app.logger.error(f"Error rendering PDF paragraph: {e}")
+        # Final fallback: strip EVERYTHING
+        final_fallback = re.sub('<[^<]+?>', '', recommendation)
+        story.append(Paragraph(final_fallback, styles['BodyText']))
 
     # Build PDF
     doc.build(story)
