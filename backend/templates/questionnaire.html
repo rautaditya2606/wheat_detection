@@ -7,17 +7,51 @@
     <!-- Location Input -->
     <div class="mb-8 p-4 bg-gray-50 rounded-lg">
         <h3 class="text-lg font-semibold text-gray-700 mb-4">Your Location</h3>
-        <div class="flex">
-            <input type="text" 
-                   id="locationInput" 
-                   placeholder="Enter your location (e.g., City, Country)" 
-                   class="flex-1 rounded-l-md border-gray-300 shadow-sm focus:border-green-500 focus:ring focus:ring-green-200 p-2 border"
-                   value="{{ current_user.manual_location or '' }}">
-            <button id="updateLocationBtn" 
-                    class="bg-green-600 text-white px-4 py-2 rounded-r-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
-                Update
-            </button>
+        
+        <div class="mb-4 space-y-2">
+            <div class="flex items-center">
+                <input type="radio" id="loc_auto" name="location_method" value="automatic" 
+                       class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300"
+                       {% if current_user.location_type == 'automatic' %}checked{% endif %}>
+                <label for="loc_auto" class="ml-3 block text-sm font-medium text-gray-700">
+                    Automatic (Use browser GPS)
+                </label>
+            </div>
+            <div class="flex items-center">
+                <input type="radio" id="loc_manual" name="location_method" value="manual" 
+                       class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300"
+                       {% if current_user.location_type != 'automatic' %}checked{% endif %}>
+                <label for="loc_manual" class="ml-3 block text-sm font-medium text-gray-700">
+                    Manual (Enter City/Country)
+                </label>
+            </div>
         </div>
+
+        <div id="manualLocationSection" class="{% if current_user.location_type == 'automatic' %}hidden{% endif %}">
+            <div class="flex">
+                <input type="text" 
+                       id="locationInput" 
+                       placeholder="Enter your location (e.g., City, Country)" 
+                       class="flex-1 rounded-l-md border-gray-300 shadow-sm focus:border-green-500 focus:ring focus:ring-green-200 p-2 border"
+                       value="{{ current_user.manual_location or '' }}">
+                <button id="updateLocationBtn" 
+                        class="bg-green-600 text-white px-4 py-2 rounded-r-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                    Update
+                </button>
+            </div>
+        </div>
+
+        <div id="autoLocationSection" class="{% if current_user.location_type != 'automatic' %}hidden{% endif %}">
+            <button id="getGPSBtn" 
+                    class="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Get GPS Location
+            </button>
+            {% if current_user.latitude and current_user.longitude %}
+            <p class="mt-2 text-xs text-gray-500 text-center">Last GPS: {{ current_user.latitude }}, {{ current_user.longitude }}</p>
+            {% endif %}
+        </div>
+        
         <p class="mt-2 text-sm text-gray-500">We'll use this to provide accurate weather and climate information for your area.</p>
         <div id="locationError" class="mt-2 text-sm text-red-600 hidden"></div>
     </div>
@@ -133,7 +167,38 @@
 </div>
 
 <script>
-// Handle location update
+// Handle location method toggle
+document.querySelectorAll('input[name="location_method"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const manualSection = document.getElementById('manualLocationSection');
+        const autoSection = document.getElementById('autoLocationSection');
+        const errorDiv = document.getElementById('locationError');
+        
+        errorDiv.classList.add('hidden');
+        
+        if (this.value === 'manual') {
+            manualSection.classList.remove('hidden');
+            autoSection.classList.add('hidden');
+        } else {
+            manualSection.classList.add('hidden');
+            autoSection.classList.remove('hidden');
+        }
+    });
+});
+
+// Helper function to update UI with weather data
+function updateWeatherUI(weatherData) {
+    if (weatherData && weatherData.location) {
+        document.getElementById('weatherLocation').textContent = weatherData.location;
+        document.getElementById('weatherTemp').textContent = weatherData.temperature || '--';
+        document.getElementById('weatherHumidity').textContent = weatherData.humidity || '--';
+        document.getElementById('weatherConditions').textContent = weatherData.conditions || '--';
+        document.getElementById('weatherWind').textContent = weatherData.wind_speed || '--';
+        document.getElementById('weatherInfo').classList.remove('hidden');
+    }
+}
+
+// Handle Manual location update
 document.getElementById('updateLocationBtn').addEventListener('click', async function() {
     const locationInput = document.getElementById('locationInput');
     const locationError = document.getElementById('locationError');
@@ -158,19 +223,17 @@ document.getElementById('updateLocationBtn').addEventListener('click', async fun
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ location })
+            body: JSON.stringify({ 
+                location: location,
+                type: 'manual'
+            })
         });
         
         const data = await response.json();
         
         if (data.success) {
-            // Update weather display
-            document.getElementById('weatherLocation').textContent = data.weather_data.location;
-            document.getElementById('weatherTemp').textContent = data.weather_data.temperature;
-            document.getElementById('weatherHumidity').textContent = data.weather_data.humidity;
-            document.getElementById('weatherConditions').textContent = data.weather_data.conditions;
-            document.getElementById('weatherWind').textContent = data.weather_data.wind_speed;
-            document.getElementById('weatherInfo').classList.remove('hidden');
+            updateWeatherUI(data.weather_data);
+            alert('Location updated successfully!');
         } else {
             locationError.textContent = data.error || 'Failed to update location';
             locationError.classList.remove('hidden');
@@ -183,6 +246,76 @@ document.getElementById('updateLocationBtn').addEventListener('click', async fun
         button.disabled = false;
         button.textContent = originalText;
     }
+});
+
+// Handle Automatic (GPS) location
+document.getElementById('getGPSBtn').addEventListener('click', function() {
+    const locationError = document.getElementById('locationError');
+    const button = this;
+    const originalContent = button.innerHTML;
+
+    if (!navigator.geolocation) {
+        locationError.textContent = "Geolocation is not supported by your browser.";
+        locationError.classList.remove('hidden');
+        return;
+    }
+
+    button.disabled = true;
+    button.innerHTML = '<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Fetching...';
+    locationError.classList.add('hidden');
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            
+            try {
+                const response = await fetch('/update-location', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        lat: lat, 
+                        lon: lon,
+                        type: 'automatic'
+                    })
+                });
+                
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    updateWeatherUI(result.weather_data);
+                    alert("GPS location and weather updated!");
+                } else {
+                    locationError.textContent = "Failed to save GPS location: " + (result.error || "Unknown error");
+                    locationError.classList.remove('hidden');
+                }
+            } catch (err) {
+                locationError.textContent = "Error connecting to server.";
+                locationError.classList.remove('hidden');
+            } finally {
+                button.disabled = false;
+                button.innerHTML = originalContent;
+            }
+        },
+        (error) => {
+            button.disabled = false;
+            button.innerHTML = originalContent;
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    locationError.textContent = "Location access denied. Please allow location access or switch to 'Manual' mode.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    locationError.textContent = "Location information is unavailable.";
+                    break;
+                case error.TIMEOUT:
+                    locationError.textContent = "The request to get user location timed out.";
+                    break;
+                default:
+                    locationError.textContent = "An unknown error occurred.";
+                    break;
+            }
+            locationError.classList.remove('hidden');
+        }
+    );
 });
 
 document.getElementById('questionnaireForm').addEventListener('submit', async function(e) {

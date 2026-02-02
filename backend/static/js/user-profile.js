@@ -315,3 +315,4 @@ document.addEventListener('DOMContentLoaded', function() {
                    answersContainer.appendChild(answerDiv);
                }
            }
+});

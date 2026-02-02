@@ -2,17 +2,17 @@ import os
 import json
 import requests
 from dotenv import load_dotenv
-import google.generativeai as genai
+from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
 
-# Initialize Gemini API
-gemini_api_key = os.getenv("GEMINI_API_KEY")
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
-    # Using gemini-3-flash-preview as per documentation
-    model = genai.GenerativeModel("gemini-3-flash-preview")
+# Initialize OpenAI API
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if openai_api_key:
+    client = OpenAI(api_key=openai_api_key)
+    # Using gpt-3.5-turbo as a stable default
+    model_name = "gpt-3.5-turbo"
 
 
 def get_weather_data(location=None):
@@ -58,10 +58,10 @@ def get_weather_data(location=None):
 
 def get_llm_recommendation(disease, questionnaire_data=None, weather_data=None):
     """
-    Get treatment recommendations from Gemini LLM
+    Get treatment recommendations from OpenAI LLM
     """
-    if not gemini_api_key:
-        return "LLM integration not configured. Please set GEMINI_API_KEY in .env file."
+    if not openai_api_key:
+        return "LLM integration not configured. Please set OPENAI_API_KEY in .env file."
 
     try:
         # Prepare the prompt
@@ -106,12 +106,20 @@ Example structure:
 </div>
 """
 
-        # Generate content using Gemini
-        response = model.generate_content(prompt)
+        # Generate content using OpenAI
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a helpful agricultural expert."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.4,
+            max_tokens=2048,
+        )
 
         # Extract the generated text
-        if response and hasattr(response, "text"):
-            return response.text
+        if response and response.choices:
+            return response.choices[0].message.content
         else:
             return "Failed to generate recommendations. Please try again later."
 

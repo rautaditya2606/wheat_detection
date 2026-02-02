@@ -12,7 +12,10 @@ class User(UserMixin):
         username,
         password_hash,
         email=None,
+        location_type=None,
         manual_location=None,
+        latitude=None,
+        longitude=None,
         weather_data=None,
         questionnaire_responses=None,
     ):
@@ -20,7 +23,10 @@ class User(UserMixin):
         self.username = username
         self.password_hash = password_hash
         self.email = email
+        self.location_type = location_type  # 'automatic' or 'manual'
         self.manual_location = manual_location
+        self.latitude = latitude
+        self.longitude = longitude
         self.weather_data = weather_data or {}
         self.questionnaire_responses = questionnaire_responses or {}
 
@@ -64,15 +70,16 @@ class UserDB:
                     for uid, user_data in data.items():
                         # Ensure all required fields are present
                         user_data.setdefault("email", None)
+                        user_data.setdefault("location_type", "manual")
                         user_data.setdefault("manual_location", None)
+                        user_data.setdefault("latitude", None)
+                        user_data.setdefault("longitude", None)
                         user_data.setdefault("weather_data", {})
                         user_data.setdefault("questionnaire_responses", {})
 
                         # Clean up old fields that no longer exist in the User class
                         for field in [
                             "location_consent",
-                            "last_location_lat",
-                            "last_location_lon",
                             "last_location_address",
                             "location_updated_at",
                             "location_accuracy_km",
@@ -85,7 +92,10 @@ class UserDB:
                             username=user_data["username"],
                             password_hash=user_data["password_hash"],
                             email=user_data["email"],
+                            location_type=user_data.get("location_type"),
                             manual_location=user_data.get("manual_location"),
+                            latitude=user_data.get("latitude"),
+                            longitude=user_data.get("longitude"),
                             weather_data=user_data.get("weather_data", {}),
                             questionnaire_responses=user_data.get(
                                 "questionnaire_responses", {}
@@ -104,7 +114,10 @@ class UserDB:
                     "username": user.username,
                     "password_hash": user.password_hash,
                     "email": user.email,
+                    "location_type": user.location_type,
                     "manual_location": user.manual_location,
+                    "latitude": user.latitude,
+                    "longitude": user.longitude,
                     "weather_data": user.weather_data,
                     "questionnaire_responses": user.questionnaire_responses,
                 }
@@ -117,7 +130,10 @@ class UserDB:
             username=username,
             password_hash=generate_password_hash(password),
             email=email,
+            location_type=kwargs.get("location_type", "manual"),
             manual_location=kwargs.get("manual_location"),
+            latitude=kwargs.get("latitude"),
+            longitude=kwargs.get("longitude"),
             weather_data=kwargs.get("weather_data", {}),
             questionnaire_responses=kwargs.get("questionnaire_responses", {}),
         )

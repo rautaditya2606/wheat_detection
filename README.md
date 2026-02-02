@@ -5,7 +5,7 @@ An advanced AI-driven platform for wheat crop disease classification, real-time 
 ## 🌟 Key Features
 
 - **High-Accuracy AI Diagnostics**: Uses an optimized **ResNet50 ONNX model** to identify 15 different wheat conditions and diseases with high precision.
-- **Expert AI Recommendations**: Integrated with **Google Gemini (gemini-3-flash-preview)** to provide step-by-step treatment plans, immediate actions, and long-term prevention strategies.
+- **Expert AI Recommendations**: Integrated with **OpenAI (GPT-3.5-Turbo)** to provide step-by-step treatment plans, immediate actions, and long-term prevention strategies.
 - **Context-Aware Analysis**: Automatically fetches real-time **weather conditions** (Temperature, Humidity, Precipitation) and **geolocation** to tailor recommendations to your specific environment.
 - **Comprehensive PDF Reporting**: Generate and download professional PDF reports containing analysis results, uploaded images, and expert-level treatment plans.
 - **Secure Farmer Accounts**: Personalized dashboard and secure authentication to track crop history and questionnaire data.
@@ -15,16 +15,16 @@ An advanced AI-driven platform for wheat crop disease classification, real-time 
 
 - **Backend**: Python (Flask, Uvicorn, ASGI)
 - **AI/ML**: ONNX Runtime, PyTorch (Training), NumPy, Pillow
-- **LLM**: Google Generative AI (Gemini 1.5 & Flash Preview)
+- **LLM**: OpenAI (GPT-3.5-Turbo)
 - **Frontend**: HTML5, Tailwind CSS, JavaScript (ES6+)
 - **Reporting**: ReportLab (PDF Generation)
-- **External APIs**: Google Gemini API, WeatherAPI, GeoIP2
+- **External APIs**: OpenAI API, WeatherAPI, GeoIP2
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Python 3.10 or higher
-- [Gemini API Key](https://aistudio.google.com/)
+- [OpenAI API Key](https://platform.openai.com/)
 - [WeatherAPI Key](https://www.weatherapi.com/)
 
 ### Installation
@@ -45,7 +45,7 @@ An advanced AI-driven platform for wheat crop disease classification, real-time 
    Create a `.env` file in the `backend/` directory:
    ```env
    SECRET_KEY=your_secret_key
-   GEMINI_API_KEY=your_gemini_api_key
+   OPENAI_API_KEY=your_openai_api_key
    WEATHER_API_KEY=your_weather_api_key
    ```
 
@@ -64,7 +64,7 @@ The application will be accessible at `http://localhost:10000`.
 ├── backend/
 │   ├── app.py              # Main ASGI/Flask Application
 │   ├── models.py           # User & Database models
-│   ├── utils.py            # Gemini & Weather utilities
+│   ├── utils.py            # OpenAI & Weather utilities
 │   ├── location.py         # Geolocation logic
 │   ├── wheat_resnet50.onnx # AI Detection Model
 │   ├── templates/          # Jinja2 HTML Templates

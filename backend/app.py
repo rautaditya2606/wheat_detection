@@ -40,6 +40,17 @@ from user_data import user_data, QUESTIONNAIRE
 from utils import get_weather_data, get_llm_recommendation
 from location import location_bp, get_ip_geolocation, reverse_geocode
 
+def get_current_user_weather():
+    """Helper to get weather data based on current user's saved location."""
+    location_query = None
+    if current_user.is_authenticated:
+        if current_user.location_type == 'automatic' and current_user.latitude and current_user.longitude:
+            location_query = f"{current_user.latitude},{current_user.longitude}"
+        elif current_user.manual_location:
+            location_query = current_user.manual_location
+    
+    return get_weather_data(location=location_query)
+
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 load_dotenv()
@@ -206,8 +217,8 @@ def result():
 @app.route("/questionnaire")
 @login_required
 def questionnaire():
-    # Get weather data for the questionnaire
-    weather_data = get_weather_data()
+    # Get weather data for the questionnaire based on saved location
+    weather_data = get_current_user_weather()
 
     return render_template(
         "questionnaire.html",
@@ -279,8 +290,8 @@ def predict():
                 predicted_class = np.argmax(outputs)
                 predicted_label = CLASS_NAMES.get(int(predicted_class), "Unknown")
 
-                # Get weather data
-                weather_data = get_weather_data()
+                # Get weather data for current user if available
+                weather_data = get_current_user_weather()
 
                 # Prepare response data
                 response_data = {
@@ -319,15 +330,35 @@ def predict():
 @login_required
 def update_location():
     try:
-        location = request.json.get("location")
-        if not location:
-            return jsonify({"success": False, "error": "Location is required"}), 400
+        data = request.json
+        loc_type = data.get("type", "manual")
+        
+        location_query = None
+        lat = None
+        lon = None
+        manual_location = None
+
+        if loc_type == "automatic":
+            lat = data.get("lat")
+            lon = data.get("lon")
+            if lat is not None and lon is not None:
+                location_query = f"{lat},{lon}"
+            else:
+                return jsonify({"success": False, "error": "Coordinates missing"}), 400
+        else:
+            manual_location = data.get("location")
+            if not manual_location:
+                return jsonify({"success": False, "error": "Location is required"}), 400
+            location_query = manual_location
 
         # Get weather data for the location
-        weather_data = get_weather_data(location=location)
+        weather_data = get_weather_data(location=location_query)
 
         # Update user's location and weather data
-        current_user.manual_location = location
+        current_user.location_type = loc_type
+        current_user.manual_location = manual_location
+        current_user.latitude = lat
+        current_user.longitude = lon
         current_user.weather_data = weather_data
         user_db.save_users()
 
@@ -497,39 +528,50 @@ def get_recommendations():
     try:
         data = request.get_json()
 
-        # Get weather data with proper structure
-        weather_data = data.get("weather_data", {})
+        # Get the most up-to-date weather for the user
+        weather_data = get_current_user_weather() or data.get("weather_data", {})
         if isinstance(weather_data, str):
             try:
                 weather_data = json.loads(weather_data)
             except json.JSONDecodeError:
                 weather_data = {}
 
-        # Prepare user data with proper structure for Gemini API
+        # Prepare location data
+        # Prioritize saved user location info
+        city = "Unknown"
+        region = "Unknown"
+        country = "IN"
+        loc = "0,0"
+        
+        if current_user.weather_data and "location" in current_user.weather_data:
+            # WeatherAPI returns "City, Country" in location string
+            loc_parts = current_user.weather_data["location"].split(",")
+            city = loc_parts[0].strip()
+            if len(loc_parts) > 1:
+                country = loc_parts[-1].strip()
+        
+        if current_user.latitude and current_user.longitude:
+            loc = f"{current_user.latitude},{current_user.longitude}"
+        elif current_user.manual_location:
+            loc = current_user.manual_location
+
+        # Prepare user data with proper structure for OpenAI API
         user_data = {
             "user_id": current_user.id,
             "location": {
-                "city": data.get("city", "Unknown"),
-                "region": data.get("region", "Unknown"),
-                "country": data.get("country", "IN"),
-                "loc": data.get("loc", "0,0"),
-                "timezone": data.get("timezone", "Asia/Kolkata"),
+                "city": city,
+                "region": region,
+                "country": country,
+                "loc": loc,
+                "timezone": "Asia/Kolkata",
             },
             "weather": {
-                "temp_c": weather_data.get(
-                    "temperature", weather_data.get("temp_c", 25.0)
-                ),
+                "temp_c": weather_data.get("temperature", 25.0),
                 "humidity": weather_data.get("humidity", 60),
-                "condition": weather_data.get(
-                    "conditions", weather_data.get("condition", "Clear")
-                ),  # Handle both 'condition' and 'conditions'
-                "wind_kph": weather_data.get(
-                    "wind_speed", weather_data.get("wind_kph", 10.0)
-                ),
-                "precip_mm": weather_data.get(
-                    "precipitation", weather_data.get("precip_mm", 0.0)
-                ),
-                "last_updated": weather_data.get("last_updated", "2023-10-20 12:00"),
+                "condition": weather_data.get("conditions", "Clear"),
+                "wind_kph": weather_data.get("wind_speed", 10.0),
+                "precip_mm": weather_data.get("precipitation", 0.0),
+                "last_updated": weather_data.get("last_updated", "N/A"),
             },
             "questionnaire_answers": getattr(
                 current_user, "questionnaire_responses", {}
@@ -544,11 +586,11 @@ def get_recommendations():
         # Store user_data in session for export later
         session["last_user_data"] = user_data
 
-        # Get recommendations from Gemini
+        # Get recommendations from OpenAI
         try:
-            from test_gemini_integration import get_gemini_recommendation
+            from openai_integration import get_openai_recommendation
 
-            result = get_gemini_recommendation(user_data)
+            result = get_openai_recommendation(user_data)
 
             if result["status"] == "success":
                 # Store recommendation in session for export
@@ -560,7 +602,7 @@ def get_recommendations():
                 )
             else:
                 app.logger.error(
-                    f"Gemini API error: {result.get('message', 'Unknown error')}"
+                    f"OpenAI API error: {result.get('message', 'Unknown error')}"
                 )
                 status_code = 503 if "503" in result.get("message", "") else 400
                 return (
@@ -574,7 +616,7 @@ def get_recommendations():
                 )
 
         except ImportError as ie:
-            app.logger.error(f"Failed to import Gemini module: {str(ie)}")
+            app.logger.error(f"Failed to import OpenAI module: {str(ie)}")
             return (
                 jsonify(
                     {
@@ -709,8 +751,9 @@ if __name__ == "__main__":
 
     # For development, you can still run with Flask's development server
     if os.environ.get("ENV") == "development":
+        print("Starting Dev Server: http://127.0.0.1:10000")
         app.run(debug=True, host="0.0.0.0", port=10000, use_reloader=False)
     else:
+        print("Starting Production Server: http://127.0.0.1:10000")
         import uvicorn
-
         uvicorn.run(asgi_app, host="0.0.0.0", port=10000)
