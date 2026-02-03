@@ -110,7 +110,10 @@ CLASS_NAMES = {
 
 # Load ONNX model
 try:
-    ort_session = ort.InferenceSession("wheat_resnet50.onnx")
+    # Use absolute path based on current file location
+    onnx_model_path = os.path.join(current_dir, "wheat_resnet50.onnx")
+    ort_session = ort.InferenceSession(onnx_model_path)
+    print(f"Successfully loaded ONNX model from: {onnx_model_path}")
 except Exception as e:
     print(f"Error loading ONNX model: {e}")
     ort_session = None
