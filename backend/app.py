@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Add the directory containing this file to the Python path
+# This ensures that internal imports work correctly when running from the root directory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from flask import (

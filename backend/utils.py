@@ -7,12 +7,19 @@ from openai import OpenAI
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI API
+# Initialize OpenAI API in a safe way so import errors
+# don't crash the whole app (e.g. if library/env mismatch)
 openai_api_key = os.getenv("OPENAI_API_KEY")
+client = None
+# Using gpt-3.5-turbo as a stable default
+model_name = "gpt-3.5-turbo"
+
 if openai_api_key:
-    client = OpenAI(api_key=openai_api_key)
-    # Using gpt-3.5-turbo as a stable default
-    model_name = "gpt-3.5-turbo"
+    try:
+        client = OpenAI(api_key=openai_api_key)
+    except Exception as e:
+        # Log the error but allow the app to start without LLM support
+        print(f"Failed to initialize OpenAI client: {e}")
 
 
 def get_weather_data(location=None):
@@ -60,8 +67,11 @@ def get_llm_recommendation(disease, questionnaire_data=None, weather_data=None):
     """
     Get treatment recommendations from OpenAI LLM
     """
-    if not openai_api_key:
-        return "LLM integration not configured. Please set OPENAI_API_KEY in .env file."
+    if not openai_api_key or client is None:
+        return (
+            "LLM integration is currently unavailable. "
+            "Please ensure OPENAI_API_KEY is set and the OpenAI client is compatible."
+        )
 
     try:
         # Prepare the prompt

@@ -11,6 +11,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Use stable OpenAI model
 MODEL_TO_USE = "gpt-3.5-turbo"
 
+# Initialize OpenAI client safely at import time so any
+# library/env mismatch doesn't raise during a request.
+openai_client = None
+if OPENAI_API_KEY:
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        # Log and continue; callers will see a clean error message instead
+        print(f"Failed to initialize OpenAI client in openai_integration: {e}")
+
 # Sample user data for testing
 sample_user_data = {
     "user_id": "test_user_123",
@@ -48,7 +58,12 @@ def get_openai_recommendation(user_data):
             "message": "OPENAI_API_KEY not found in environment variables",
         }
 
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    if openai_client is None:
+        # Either initialization failed or key is missing/invalid
+        return {
+            "status": "error",
+            "message": "LLM integration is currently unavailable. Please check your OpenAI configuration.",
+        }
 
     weather = user_data.get("weather", {})
     weather_condition = weather.get("condition", "Clear")
@@ -109,7 +124,7 @@ INSTRUCTIONS:
         try:
             print(f"Attempting OpenAI recommendation, attempt={attempt + 1}")
 
-            response = client.chat.completions.create(
+            response = openai_client.chat.completions.create(
                 model=MODEL_TO_USE,
                 messages=[
                     {"role": "system", "content": "You are an expert agricultural consultant specializing in wheat pathology and sustainable farming."},
