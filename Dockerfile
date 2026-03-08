@@ -1,4 +1,3 @@
-# Use Python 3.11 for better compatibility with modern libraries
 FROM python:3.11-slim
 
 WORKDIR /app
