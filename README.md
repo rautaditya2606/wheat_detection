@@ -85,10 +85,6 @@ The core classification engine uses a **Convolutional Neural Network (ResNet50)*
 - **ONNX Quantization**: The model has been optimized using **INT8 Quantization**, reducing the file size from **90MB to 22.6MB (75% reduction)**. This ensures faster loading and reduced memory usage without compromising accuracy.
 - **Human-in-the-Loop**: A feedback mechanism on the results page allows users to validate model outputs. Corrective feedback is logged to `model_feedback.csv`, providing a structured dataset to analyze edge cases and improve future model iterations.
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
