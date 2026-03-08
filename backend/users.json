@@ -21,16 +21,16 @@
     "latitude": 18.5211,
     "longitude": 73.8502,
     "weather_data": {
-      "temperature": 21.2,
-      "humidity": 43,
+      "temperature": 27.7,
+      "humidity": 12,
       "conditions": "Clear",
-      "wind_speed": 7.9,
-      "wind_dir": "WNW",
+      "wind_speed": 3.6,
+      "wind_dir": "NW",
       "precipitation": 0.0,
       "location": "Pune, India",
-      "feels_like": 21.2,
-      "cloud_cover": 11,
-      "last_updated": "2026-02-02 22:00"
+      "feels_like": 25.8,
+      "cloud_cover": 0,
+      "last_updated": "2026-03-08 21:00"
     },
     "questionnaire_responses": {
       "soil_type": "Silty Clay Loam",

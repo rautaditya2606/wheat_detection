@@ -7,7 +7,7 @@ import os
 # Configuration
 NUM_CLASSES = 15
 MODEL_PATH = "wheat_resnet50.pt"
-ONNX_PATH = "wheat_resnet50.onnx"
+ONNX_PATH = "backend/wheat_resnet50_quantized.onnx"
 
 
 def convert_to_onnx():

@@ -111,7 +111,7 @@ CLASS_NAMES = {
 # Load ONNX model
 try:
     # Use absolute path based on current file location
-    onnx_model_path = os.path.join(current_dir, "wheat_resnet50.onnx")
+    onnx_model_path = os.path.join(current_dir, "wheat_resnet50_quantized.onnx")
     ort_session = ort.InferenceSession(onnx_model_path)
     print(f"Successfully loaded ONNX model from: {onnx_model_path}")
 except Exception as e:
@@ -377,6 +377,7 @@ def update_location():
                 "success": True,
                 "message": "Location updated successfully",
                 "weather_data": weather_data,
+                "city": weather_data.get("location") if weather_data else None
             }
         )
     except Exception as e:
@@ -764,6 +765,35 @@ def export_report():
     response.headers['Content-Disposition'] = f'attachment; filename=Wheat_Report_{user_data.get("disease_detected")}.pdf'
     
     return response
+
+
+@app.route("/api/feedback", methods=["POST"])
+@login_required
+def submit_feedback():
+    try:
+        data = request.json
+        classification = data.get("classification")
+        is_correct = data.get("is_correct")
+        actual_correct = data.get("actual_correct")
+
+        # Define CSV file path
+        csv_path = os.path.join(app.root_path, "model_feedback.csv")
+        file_exists = os.path.isfile(csv_path)
+
+        import csv
+        with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            # Write header if new file
+            if not file_exists:
+                writer.writerow(["classification", "correct?", "actual correct according to user"])
+            
+            # Write feedback row
+            writer.writerow([classification, "Yes" if is_correct else "No", actual_correct])
+
+        return jsonify({"success": True, "message": "Feedback saved successfully"})
+    except Exception as e:
+        app.logger.error(f"Error saving feedback: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/uploads/<filename>")

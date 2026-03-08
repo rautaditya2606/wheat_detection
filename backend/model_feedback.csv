@@ -1,0 +1,7 @@
+classification,correct?,actual correct according to user
+Healthy,Yes,Healthy
+Fusarium Head Blight,Yes,Fusarium Head Blight
+Mildew,Yes,Mildew
+Leaf Blight,No,Healthy
+Mite,No,Healthy
+Tan spot,No,Mite

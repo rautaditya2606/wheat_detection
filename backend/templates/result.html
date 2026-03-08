@@ -81,6 +81,47 @@
               </svg>Analyze Another Image
             </a>
           </div>
+
+          <!-- Feedback Section -->
+          <div id="feedbackContainer" class="mt-8 pt-6 border-t border-gray-100">
+            <p class="text-sm font-semibold text-gray-700 mb-3">Was this classification correct?</p>
+            <div id="feedbackInitial" class="flex gap-4">
+              <button onclick="submitFeedback(true)" class="flex-1 py-2 px-4 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors font-medium">Yes, Correct</button>
+              <button onclick="showCorrectionUI()" class="flex-1 py-2 px-4 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium">No, Incorrect</button>
+            </div>
+            
+            <!-- Correction UI (Hidden by default) -->
+            <div id="correctionUI" class="hidden mt-4 space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <label for="correctClassSelect" class="block text-sm font-medium text-gray-700">What is the actual disease?</label>
+              <select id="correctClassSelect" class="block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                <option value="" disabled selected>Select the correct disease...</option>
+                <option value="Aphid">Aphid</option>
+                <option value="Black Rust">Black Rust</option>
+                <option value="Blast">Blast</option>
+                <option value="Brown Rust">Brown Rust</option>
+                <option value="Common Root Rot">Common Root Rot</option>
+                <option value="Fusarium Head Blight">Fusarium Head Blight</option>
+                <option value="Healthy">Healthy</option>
+                <option value="Leaf Blight">Leaf Blight</option>
+                <option value="Mildew">Mildew</option>
+                <option value="Mite">Mite</option>
+                <option value="Septoria">Septoria</option>
+                <option value="Smut">Smut</option>
+                <option value="Stem fly">Stem fly</option>
+                <option value="Tan spot">Tan spot</option>
+                <option value="Yellow Rust">Yellow Rust</option>
+              </select>
+              <div class="flex gap-2">
+                <button onclick="submitFeedback(false)" class="flex-1 py-2 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">Submit Correction</button>
+                <button onclick="hideCorrectionUI()" class="py-2 px-4 bg-white text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">Cancel</button>
+              </div>
+            </div>
+
+            <!-- Success Message -->
+            <div id="feedbackSuccess" class="hidden mt-4 p-3 bg-green-100 text-green-800 text-sm rounded-lg text-center font-medium">
+              Thank you for your feedback! This helps us improve our model.
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -233,6 +274,62 @@ if (analyzeBtn) {
             analyzeBtn.classList.remove('opacity-75', 'cursor-not-allowed');
         }
     });
+}
+
+// Global functions for feedback mechanism
+function showCorrectionUI() {
+    document.getElementById('feedbackInitial').classList.add('hidden');
+    document.getElementById('correctionUI').classList.remove('hidden');
+}
+
+function hideCorrectionUI() {
+    document.getElementById('correctionUI').classList.add('hidden');
+    document.getElementById('feedbackInitial').classList.remove('hidden');
+}
+
+async function submitFeedback(correct) {
+    const classification = '{{ label }}';
+    let actualCorrect = classification;
+    
+    // If user clicked 'No' (correct=false), get the value from the select dropdown
+    if (!correct) {
+        const selectElement = document.getElementById('correctClassSelect');
+        if (!selectElement.value) {
+            alert('Please select the correct disease from the list.');
+            return;
+        }
+        actualCorrect = selectElement.value;
+    }
+
+    try {
+        const response = await fetch('/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                classification: classification,
+                is_correct: correct,
+                actual_correct: actualCorrect
+            })
+        });
+
+        if (response.ok) {
+            // Hide the UI elements and show the success message
+            document.getElementById('feedbackInitial').classList.add('hidden');
+            document.getElementById('correctionUI').classList.add('hidden');
+            document.getElementById('feedbackContainer').querySelector('p').classList.add('hidden');
+            document.getElementById('feedbackSuccess').classList.remove('hidden');
+            
+            // Re-hide after 5 seconds
+            setTimeout(() => {
+                document.getElementById('feedbackContainer').classList.add('hidden');
+            }, 5000);
+        } else {
+            alert('Failed to submit feedback. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error submitting feedback:', error);
+        alert('An error occurred. Please try again.');
+    }
 }
 </script>
 {% endblock %}
