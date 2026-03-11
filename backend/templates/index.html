@@ -34,6 +34,69 @@
 
       <button type="submit" class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors">Analyze Image</button>
     </form>
+
+    <!-- Sample Images Section -->
+    <div class="mt-10 border-t border-gray-100 pt-8">
+      <div class="flex flex-col mb-4">
+        <h3 class="text-lg font-medium text-gray-800 flex items-center">
+          <svg class="w-5 h-5 mr-2 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+          </svg>
+          Try Sample Images
+        </h3>
+        <p class="text-xs text-gray-500 mt-1 italic">
+          Disclaimer: These are test set images that the model has never seen during training, ensuring unbiased results.
+        </p>
+      </div>
+      
+      <!-- Marquee Container -->
+      <div class="relative overflow-hidden group/marquee py-4 bg-gray-50 rounded-xl">
+        <div class="flex animate-marquee whitespace-nowrap space-x-6 px-6">
+          <!-- Sample Items -->
+          {% set samples = [
+              {'path': '/static/samples/healthy_test_0.png', 'label': 'Healthy'},
+              {'path': '/static/samples/leaf_blight_100.png', 'label': 'Leaf Blight'},
+              {'path': '/static/samples/brown_rust_test_13.png', 'label': 'Brown Rust'},
+              {'path': '/static/samples/aphid_30.png', 'label': 'Aphid'},
+              {'path': '/static/samples/black_rust_1.png', 'label': 'Black Rust'},
+              {'path': '/static/samples/blast_16.png', 'label': 'Blast'},
+              {'path': '/static/samples/fusarium_head_blight_test_14.png', 'label': 'Fusarium'},
+              {'path': '/static/samples/mildew_test_16.png', 'label': 'Mildew'}
+          ] %}
+          
+          {% for i in range(2) %}
+          {% for sample in samples %}
+          <div class="inline-block w-32 cursor-pointer group" onclick="analyzeSample('{{ sample.path }}')">
+            <div class="relative overflow-hidden rounded-lg aspect-square border-2 border-transparent group-hover:border-green-500 shadow-sm transition-all">
+              <img src="{{ sample.path }}" alt="{{ sample.label }}" class="object-cover w-full h-full group-hover:scale-110 transition-transform duration-300">
+              <div class="absolute inset-x-0 bottom-0 bg-black bg-opacity-40 py-1 text-center">
+                <span class="text-[10px] text-white font-medium">{{ sample.label }}</span>
+              </div>
+              <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                <span class="text-white opacity-0 group-hover:opacity-100 font-bold bg-green-600 px-2 py-0.5 rounded text-[10px]">Test</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <style>
+      @keyframes marquee {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(calc(-50% - 12px)); }
+      }
+      .animate-marquee {
+        animation: marquee 30s linear infinite;
+        width: max-content;
+      }
+      .group\/marquee:hover .animate-marquee {
+        animation-play-state: paused;
+      }
+    </style>
+
     <div class="mt-8 text-center text-gray-600">
       <p>Supported formats: JPG, JPEG, PNG</p>
     </div>
@@ -206,5 +269,45 @@
       // Initial state
       updateButtonState(false)
     })
+  </script>
+
+  <script>
+    async function analyzeSample(imagePath) {
+      const analyzeBtn = document.querySelector('#uploadForm button[type="submit"]')
+      const originalText = analyzeBtn.innerHTML
+
+      // Show loading state
+      analyzeBtn.disabled = true
+      analyzeBtn.innerHTML = 'Analyzing Sample... <i class="fas fa-spinner fa-spin ml-2"></i>'
+      analyzeBtn.classList.add('opacity-75')
+
+      try {
+        const response = await fetch('/predict', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sample_path: imagePath
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to process sample')
+        }
+
+        const data = await response.json()
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url
+        }
+      } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to analyze sample image. Please try uploading manually.')
+      } finally {
+        analyzeBtn.disabled = false
+        analyzeBtn.innerHTML = originalText
+        analyzeBtn.classList.remove('opacity-75')
+      }
+    }
   </script>
 {% endblock %}

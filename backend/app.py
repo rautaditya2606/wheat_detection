@@ -243,32 +243,52 @@ def predict():
     try:
         app.logger.info("Received request to /predict endpoint")
 
-        if "file" not in request.files:
-            app.logger.error("No file part in the request")
-            return jsonify({"error": "No file part"}), 400
+        # Handle sample image selection (JSON request)
+        if request.is_json:
+            data = request.get_json()
+            sample_path = data.get("sample_path")
+            if sample_path:
+                # Security check: ensure path is within static/samples
+                if not sample_path.startswith("/static/samples/"):
+                    return jsonify({"error": "Invalid sample path"}), 400
+                
+                # Convert URL path to local path
+                local_path = os.path.join(app.root_path, sample_path.lstrip("/"))
+                if not os.path.exists(local_path):
+                    return jsonify({"error": "Sample file not found"}), 404
+                
+                filepath = local_path
+                app.logger.info(f"Using sample image: {filepath}")
+            else:
+                return jsonify({"error": "No sample path provided"}), 400
+        
+        # Handle traditional file upload
+        else:
+            if "file" not in request.files:
+                app.logger.error("No file part in the request")
+                return jsonify({"error": "No file part"}), 400
 
-        file = request.files["file"]
-        if file.filename == "":
-            app.logger.error("No file selected")
-            return jsonify({"error": "No selected file"}), 400
+            file = request.files["file"]
+            if file.filename == "":
+                app.logger.error("No file selected")
+                return jsonify({"error": "No selected file"}), 400
 
-        # Check file extension
-        allowed_extensions = {"png", "jpg", "jpeg"}
-        if (
-            "." not in file.filename
-            or file.filename.rsplit(".", 1)[1].lower() not in allowed_extensions
-        ):
-            app.logger.error(f"Invalid file type: {file.filename}")
-            return (
-                jsonify(
-                    {
-                        "error": "Invalid file type. Please upload a PNG, JPG, or JPEG image."
-                    }
-                ),
-                400,
-            )
+            # Check file extension
+            allowed_extensions = {"png", "jpg", "jpeg"}
+            if (
+                "." not in file.filename
+                or file.filename.rsplit(".", 1)[1].lower() not in allowed_extensions
+            ):
+                app.logger.error(f"Invalid file type: {file.filename}")
+                return (
+                    jsonify(
+                        {
+                            "error": "Invalid file type. Please upload a PNG, JPG, or JPEG image."
+                        }
+                    ),
+                    400,
+                )
 
-        try:
             # Ensure upload directory exists
             os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
@@ -278,12 +298,14 @@ def predict():
             file.save(filepath)
             app.logger.info(f"File saved to {filepath}")
 
+        try:
             # Open and verify image
             try:
                 image = Image.open(filepath).convert("RGB")
-                # Verify it's a valid image by trying to load it
-                image.verify()
-                image = Image.open(filepath).convert("RGB")
+                # For saved files we might want to verify, but for samples we know they are valid
+                if "/static/samples/" not in filepath:
+                    image.verify()
+                    image = Image.open(filepath).convert("RGB")
             except Exception as e:
                 app.logger.error(f"Invalid image file: {str(e)}")
                 if os.path.exists(filepath):
@@ -304,10 +326,16 @@ def predict():
                 weather_data = get_current_user_weather()
 
                 # Prepare response data
+                # Use URL for samples, relative path for uploads
+                if "/static/samples/" in filepath:
+                    image_url = f"/static/samples/{os.path.basename(filepath)}"
+                else:
+                    image_url = f"/uploads/{os.path.basename(filepath)}"
+
                 response_data = {
                     "success": True,
                     "label": predicted_label,
-                    "image_url": f"/uploads/{os.path.basename(filepath)}",
+                    "image_url": image_url,
                     "weather_data": weather_data,
                     "show_questionnaire": current_user.is_authenticated,
                     "redirect_url": url_for("result"),
@@ -316,7 +344,7 @@ def predict():
                 # Store result in session
                 session["prediction_result"] = {
                     "label": predicted_label,
-                    "image_path": f"/uploads/{os.path.basename(filepath)}",
+                    "image_path": image_url,
                     "weather_data": weather_data,
                 }
 
