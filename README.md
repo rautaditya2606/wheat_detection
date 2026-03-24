@@ -1,229 +1,185 @@
-# Context-Aware Wheat Disease Diagnostics System
+# Wheat Disease Intelligence Platform
 
-**An AI-powered crop health platform that goes beyond simple disease classification** — integrating computer vision, real-time environmental data, and LLM-based treatment synthesis to deliver personalized, field-specific recommendations for farmers.
+> Production-style web platform for wheat disease detection with contextual AI recommendations.
 
-**[🌾 Live Demo](https://wheat-detection-1.onrender.com/)** | **Built for SIH 2025 + Production Enhancements**
-
----
-
-## The Problem
-
-Traditional plant disease classifiers output a label and confidence score. But **farmers don't need labels — they need actionable treatment plans**. A fungal infection requires different management in humid vs. dry climates, in drip-irrigated vs. rain-fed fields, and varies based on soil type and crop rotation history. **Classification alone doesn't solve the problem.**
+**[Live Demo](https://wheat-detection-1.onrender.com/)**
 
 ---
 
-## The Solution: Multi-Modal Diagnostic Pipeline
+## Why This Project Matters
 
-This system fuses **three data sources** to generate contextualized recommendations:
+Most crop-disease demos stop at a class label. This system goes further:
 
-### 1. **Computer Vision** → Disease Detection
-- **ResNet50 (Quantized ONNX)**: 15-class wheat disease classification
-- **INT8 Quantization**: 75% model size reduction (90MB → 22.6MB) for faster inference
-- **Human-in-the-Loop Validation**: Users confirm/correct predictions → feedback logged to `model_feedback.csv` for continuous improvement
+2. Detects disease from image using a quantized ResNet50 model (89% accuracy, 15 classes)
+3. Collects field context — questionnaire, real-time weather, geolocation
+4. Generates practical treatment guidance using an LLM
+5. Captures user feedback and stores labeled images for a future retraining pipeline
 
-### 2. **Environmental Context** → Field Conditions
-- **10-Question Assessment**: Captures irrigation type, soil characteristics, previous crop, fertilizer usage
-- **Automatic GPS Tracking**: User location → OpenWeatherAPI → real-time temperature, humidity, precipitation
-- **Geolocation Integration**: Human-readable city/region display
-
-### 3. **LLM Synthesis** → Personalized Treatment Plans
-- **GPT-3.5-Turbo Orchestration**: Combines disease prediction + field questionnaire + weather data
-- **Structured Prompt Engineering**: Generates three-tier recommendations:
-  - **Scientific Analysis**: Disease behavior in current environmental conditions
-  - **Immediate Rescue Actions**: Inspection protocols, treatment options (organic + chemical)
-  - **Long-Term Management**: Soil health, crop rotation, integrated pest management
-- **PDF Report Generation**: Downloadable analysis with uploaded image, diagnosis, and full treatment plan
+This demonstrates end-to-end engineering across ML inference, backend architecture, cloud storage, managed database integration, and product UX — not just a notebook experiment.
 
 ---
 
-## Sample Output
+## Architecture
 
-**Input:**
-- Disease: Aphid infestation
-- Weather: Clear, 27.7°C, 12% humidity
-- Field: Drip irrigation, loamy soil, previous crop: chickpea
+```
+User (Browser)
+  -> Upload image
+  -> Submit location + questionnaire
 
-**Generated Recommendation (excerpt):**
-> **Scientific Analysis**  
-> Aphids thrive in warm and dry environments. The current clear weather with low humidity (12%) favors infestations...
-> 
-> **Immediate Rescue Actions**  
-> • Inspect population density on affected plants  
-> • Apply neem oil or insecticidal soap (organic option)  
-> • Consider pyrethroid-based insecticide at 2ml/L (chemical option)
-> 
-> **Long-Term Management**  
-> • Introduce beneficial insects (ladybugs, lacewings) for natural control  
-> • Implement crop rotation to break pest cycles  
-> • Monitor soil health and incorporate organic matter
+Flask App (backend/app.py)
+  -> ONNX Runtime inference (quantized ResNet50)
+  -> Uploads image to Cloudinary
+  -> Stores prediction + feedback record in Aiven ClickHouse
+  -> Returns label + image URL + feedback ID
 
-[📄 View Full Sample Report](docs/sample_report.pdf)
+Context / Recommendation Layer
+  -> WeatherAPI for real-time weather context
+  -> OpenAI GPT-3.5-Turbo for treatment recommendation generation
+
+Persistence Layer
+  -> Cloudinary: image asset storage (linked via URL)
+  -> Aiven ClickHouse: prediction events + labeled feedback records
+```
 
 ---
 
-## Why This Approach Matters
+## Core Features
 
-| **Traditional Classifiers** | **This System** |
-|------------------------------|-----------------|
-| Output: "Aphid - 94% confidence" | Output: "Aphid detected in dry conditions (12% humidity). Apply neem oil within 24 hours. Here's why..." |
-| Single data source (image only) | Multi-modal fusion (image + field data + weather) |
-| Static recommendations | Context-aware treatment plans |
-| No feedback loop | Human-in-the-loop validation + continuous learning |
+- **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 accuracy across 15 wheat disease classes
+- **INT8 Quantization** — Model size reduced from 90MB to 22.6MB (75% reduction), faster cold-starts on CPU deployment
+- **Human-in-the-Loop Feedback** — Users confirm or correct predictions; labeled images stored for future retraining
+- **Context-Aware Recommendations** — Real-time weather + geolocation fed to GPT-3.5-Turbo for field-specific guidance
+- **PDF Report Export** — Downloadable diagnostic report with image, prediction, and treatment plan
+- **Responsive UI** — Mobile-first design with Tailwind CSS for field access
 
 ---
 
 ## Tech Stack
 
-**Backend & AI**
-- Python (Flask, Uvicorn ASGI)
-- ONNX Runtime (quantized inference), PyTorch (training), ONNX-Simplifier
-- OpenAI API (GPT-3.5-Turbo for treatment synthesis)
-
-**Data Integration**
-- OpenWeatherAPI (real-time climate data)
-- GeoIP2 (location services)
-- ReportLab (PDF generation)
-
-**Frontend**
-- HTML5, Tailwind CSS (mobile-first design)
-- JavaScript (ES6+, GPS integration)
-
-**Deployment**
-- Render (live production environment)
-- SQLite (user accounts, feedback logging)
+| Layer | Tools |
+|---|---|
+| Backend | Flask, Flask-SQLAlchemy, Uvicorn / ASGI |
+| ML | PyTorch (training), ONNX, ONNX Runtime |
+| Storage | Cloudinary (images), Aiven ClickHouse (feedback records) |
+| Intelligence | OpenAI GPT-3.5-Turbo, WeatherAPI, GeoIP2 |
+| Reporting | ReportLab (PDF generation) |
+| Deployment | Docker, Render |
 
 ---
 
-## Getting Started
+## ML Pipeline
 
-### Prerequisites
-- Python 3.10+
-- [OpenAI API Key](https://platform.openai.com/)
-- [WeatherAPI Key](https://www.weatherapi.com/)
+### Model: ResNet50
 
-### Installation
+ResNet50 is a strong fit for this problem:
+- Residual connections give stable training on limited data
+- Good accuracy/latency tradeoff for 224×224 crop images
+- Mature ONNX export and Runtime ecosystem
+- Easily portable to CPU-only production environments
+
+**Achieves 89% top-1 accuracy across 15 wheat disease classes.**
+
+### Optimization Pipeline
+
+```
+Train in PyTorch (ResNet50 classifier)
+  -> Export to ONNX          [convert_to_onnx.py]
+  -> Simplify ONNX graph     [optimize_onnx.py]
+  -> INT8 dynamic quantization [quantize_onnx.py]
+  -> Serve with ONNX Runtime
+```
+
+INT8 quantization via `onnxruntime.quantization.quantize_dynamic` (weight_type=QUInt8):
+- 75% model size reduction (90MB → 22.6MB)
+- Lower CPU memory pressure
+- Better inference throughput on CPU-heavy deployments
+
+## Cloudinary + ClickHouse: How Images and Labels Are Linked
+
+Every uploaded image is stored in Cloudinary. The returned `secure_url` is saved directly into the ClickHouse feedback record — this URL is the link between the image asset and its label.
+
+**Feedback schema:**
+
+| Field | Type | Description |
+|---|---|---|
+| id | UUID | Primary key |
+| image_url | String | Cloudinary secure URL |
+| predicted_class | String | Model's output |
+| correct_class | String (nullable) | User-corrected label if flagged |
+| is_correct | Boolean | User confirmation |
+| created_at | DateTime | Timestamp |
+
+This creates a reliable audit trail: prediction request → cloud image → persisted labeled record.
+
+To reconstruct a training dataset from collected feedback:
+
+```python
+SELECT image_url, correct_class FROM feedback
+# Download each image, save to dataset/{correct_class}/filename.jpg
+# PyTorch ImageFolder reads folder names as class labels directly
+```
+
+---
+
+## Project Structure
+
+```
+/
+├── backend/
+│   ├── app.py                          # Main ASGI/Flask application
+│   ├── models.py                       # Feedback schema (ClickHouse via SQLAlchemy)
+│   ├── utils.py                        # OpenAI + Weather integrations
+│   ├── location.py                     # Geolocation logic
+│   ├── convert_to_onnx.py              # PyTorch → ONNX export
+│   ├── optimize_onnx.py                # ONNX graph simplification
+│   ├── quantize_onnx.py                # INT8 dynamic quantization
+│   ├── wheat_resnet50_quantized.onnx   # Production model
+│   ├── templates/                      # Jinja2 HTML templates
+│   └── static/                         # Tailwind CSS, JS, uploads
+├── docs/                               # Feature documentation
+├── Dockerfile
+└── README.md
+```
+
+---
+
+## Run Locally
+
+**Prerequisites:** Python 3.10+, OpenAI API key, WeatherAPI key, Cloudinary account, Aiven ClickHouse instance
+
 ```bash
-# Clone repository
 git clone https://github.com/rautaditya2606/wheat_detection.git
 cd wheat_detection/backend
-
-# Install dependencies
 pip install -r requirements.txt
+```
 
-# Configure environment variables
-cat > .env << EOF
+Create `backend/.env`:
+
+```
+OPENAI_API_KEY=your_openai_key
+WEATHER_API_KEY=your_weather_key
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_key
+CLOUDINARY_API_SECRET=your_cloudinary_secret
+DATABASE_URL=your_aiven_clickhouse_url
 SECRET_KEY=your_secret_key
-OPENAI_API_KEY=your_openai_api_key
-WEATHER_API_KEY=your_weather_api_key
-EOF
+```
 
-# Run application
+```bash
 python app.py
-# Access at http://localhost:10000
+# http://localhost:10000
 ```
 
 ---
 
-## Project Architecture
-```
-wheat_detection/
-├── backend/
-│   ├── app.py                          # ASGI/Flask application + API routes
-│   ├── models.py                       # SQLAlchemy user/database models
-│   ├── utils.py                        # OpenAI prompt engineering + weather API
-│   ├── location.py                     # GPS → geolocation → weather integration
-│   ├── wheat_resnet50_quantized.onnx   # INT8 quantized ONNX model (22.6MB)
-│   ├── model_feedback.csv              # Human-in-the-loop correction logs
-│   ├── templates/                      # Jinja2 HTML (results, dashboard, etc.)
-│   └── static/                         # Tailwind CSS, JS, user uploads
-└── docs/                               # Sample outputs, architecture diagrams
-```
+## Roadmap
+
+- **Active learning pipeline** — scraped and user-corrected images stored in Cloudinary + ClickHouse, exported as an `ImageFolder`-compatible dataset for periodic fine-tuning
+- **CI/CD triggered retraining** — GitHub Actions workflow that triggers fine-tuning automatically when verified sample count crosses a class threshold, exports updated ONNX model
+- **Incremental fine-tuning** — new data mixed with original dataset samples to prevent catastrophic forgetting
+- **Model observability** — latency tracking, confidence distribution monitoring, and class-level prediction drift detection
+- **Dataset versioning** — track which feedback samples were used in each retraining run via `used_in_training` flag
 
 ---
 
-## Usage Workflow
-
-1. **Sign Up/Log In** → Secure account with personalized dashboard
-2. **Complete Field Assessment** → 10-question form OR auto-GPS location
-3. **Upload Wheat Image** → Drag-and-drop or camera capture
-4. **Receive Diagnosis** → Disease classification + confidence score
-5. **Validate Prediction** → Confirm/correct result (builds training data)
-6. **Generate Treatment Plan** → Click "Get Expert Recommendations"
-7. **Export Report** → Download PDF with image, analysis, and action plan
-
----
-
-## Model Optimization Details
-
-**Architecture Choice:**
-- ResNet50 selected for proven performance on agricultural datasets
-- Future consideration: EfficientNet-B0 for mobile deployment (2-3x faster inference)
-
-**Quantization Pipeline:**
-- **Pre-quantization**: 90MB FP32 model, ~150ms inference (CPU)
-- **Post-quantization**: 22.6MB INT8 model, ~80ms inference (CPU)
-- **Accuracy retention**: <1% degradation on validation set
-- **Tools**: ONNX Runtime quantization, onnx-simplifier for graph optimization
-
-**Human-in-the-Loop Data Collection:**
-- Feedback mechanism on results page (thumbs up/down + optional correction)
-- Logged format: `timestamp, predicted_class, user_correction, confidence, image_hash`
-- Use case: Identify edge cases for model retraining, track real-world accuracy
-
----
-
-## Key Learnings & Design Decisions
-
-**Why multi-modal over pure vision:**
-- Disease symptoms often ambiguous in images (early-stage rust vs. nutrient deficiency)
-- Environmental factors change treatment efficacy (fungicides fail in rain, neem oil ineffective in cold)
-- Farmers need *what to do*, not just *what it is*
-
-**Why LLM integration:**
-- Structured knowledge bases become outdated quickly
-- GPT-3.5-Turbo adapts to novel conditions (e.g., "unseasonably dry March in Punjab")
-- Prompt engineering allows injection of local agricultural practices
-
-**Why quantization:**
-- Target users: farmers with mid-range smartphones (limited bandwidth, storage)
-- 75% size reduction = faster loading in rural areas with poor connectivity
-- Inference speed matters for real-time field diagnostics
-
----
-
-## Future Enhancements
-
-- [ ] **Mobile App**: React Native wrapper for offline inference
-- [ ] **EfficientNet Migration**: 2-3x faster inference for mobile deployment
-- [ ] **MLOps Pipeline**: MLflow experiment tracking, automated retraining on feedback data
-- [ ] **Multi-Language Support**: Hindi, Punjabi, Marathi voice/text interfaces
-- [ ] **Yield Impact Tracking**: Longitudinal study of treatment effectiveness
-
----
-
-## Contributing
-
-This project was built for **SIH 2025** and extended with production features. Contributions welcome for:
-- Additional crop support (rice, maize, cotton)
-- Model accuracy improvements (submit to `model_feedback.csv` analysis)
-- Regional treatment knowledge (local agricultural practices)
-
----
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details
-
----
-
-## Acknowledgments
-
-- **SIH 2025**: Initial problem statement on wheat disease classification
-- **OpenAI**: GPT-3.5-Turbo API for treatment synthesis
-- **WeatherAPI**: Real-time climate data integration
-- **Agricultural Domain Experts**: Treatment validation and field testing feedback
-
----
-
-**Built by [Aditya Raut](https://github.com/rautaditya2606)** | 2nd Year CSE (AI & Analytics) @ MIT ADT University  
-*This project secured a GenAI Engineering internship demonstrating end-to-end ML system design capabilities.*
+Built by [Aditya Raut](https://github.com/rautaditya2606)
