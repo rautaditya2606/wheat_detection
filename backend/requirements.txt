@@ -30,5 +30,13 @@ geopy==2.4.1
 python-dotenv==1.0.0
 user-agents==2.2.0
 
+# Cloudinary
+cloudinary==1.37.0
+
+# Database & ClickHouse
+flask-sqlalchemy==3.1.1
+clickhouse-sqlalchemy==0.3.2
+clickhouse-connect==0.14.1
+
 # Export & Reporting
 reportlab==4.4.7

@@ -1,0 +1,14 @@
+{
+  "1": {
+    "id": "1",
+    "username": "admin",
+    "password_hash": "scrypt:32768:8:1$fcXRulXqPTDv1UhR$e2f84ded942b98b83775752230df9937800591b99cb6b6823f4f9488bfe46af7da796fd87e1338e5bd7a130ce3febeb4002cf7b96a6bec217ad2f26eafec3208",
+    "email": "admin@example.com",
+    "location_type": "manual",
+    "manual_location": null,
+    "latitude": null,
+    "longitude": null,
+    "weather_data": {},
+    "questionnaire_responses": {}
+  }
+}

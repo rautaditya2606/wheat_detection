@@ -6,16 +6,22 @@ import os
 
 # Configuration
 NUM_CLASSES = 15
-MODEL_PATH = "wheat_resnet50.pt"
-ONNX_PATH = "backend/wheat_resnet50_quantized.onnx"
+MODEL_PATH = "/home/adityaraut/Documents/wheat/models/wheat_resnet50_best.pt"
+ONNX_PATH = os.path.join(os.path.dirname(__file__), "onnx_models", "test_best_v1.onnx")
 
 
 def convert_to_onnx():
     print(f"Loading PyTorch model from {MODEL_PATH}...")
 
-    # Initialize model architecture
-    model = models.resnet50(pretrained=False)
-    model.fc = nn.Linear(model.fc.in_features, NUM_CLASSES)
+    # Initialize model architecture to match the best model structure
+    model = models.resnet50(weights=None)
+    model.fc = nn.Sequential(
+        nn.Identity(), # Placeholder
+        nn.Linear(model.fc.in_features, 512),
+        nn.ReLU(),
+        nn.Dropout(0.3),
+        nn.Linear(512, NUM_CLASSES)
+    )
 
     # Load weights
     device = torch.device("cpu")

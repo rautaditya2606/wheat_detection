@@ -33,6 +33,8 @@ import uvicorn
 import re
 import numpy as np
 import onnxruntime as ort
+import cloudinary
+import cloudinary.uploader
 from io import BytesIO
 from PIL import Image
 from collections import OrderedDict
@@ -42,10 +44,20 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from werkzeug.utils import secure_filename
-from models import user_db, User
+from models import user_db, User, db, Feedback
 from user_data import user_data, QUESTIONNAIRE
 from utils import get_weather_data, get_llm_recommendation
 from location import location_bp, get_ip_geolocation, reverse_geocode
+
+load_dotenv()
+
+# Cloudinary configuration
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True
+)
 
 def get_current_user_weather():
     """Helper to get weather data based on current user's saved location."""
@@ -60,9 +72,20 @@ def get_current_user_weather():
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
-load_dotenv()
 
 # Configuration
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+    "pool_recycle": 180,
+}
+db.init_app(app)
+
+# Create tables in app context
+with app.app_context():
+    db.create_all()
+
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key-change-in-production")
 app.config["UPLOAD_FOLDER"] = "static/uploads"
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max file size
@@ -111,7 +134,7 @@ CLASS_NAMES = {
 # Load ONNX model
 try:
     # Use absolute path based on current file location
-    onnx_model_path = os.path.join(current_dir, "wheat_resnet50_quantized.onnx")
+    onnx_model_path = os.path.join(current_dir, "onnx_models", "wheat_resnet50_quantized.onnx")
     ort_session = ort.InferenceSession(onnx_model_path)
     print(f"Successfully loaded ONNX model from: {onnx_model_path}")
 except Exception as e:
@@ -206,20 +229,31 @@ def index():
 @app.route("/result")
 def result():
     # Retrieve data from session
-    result_data = session.get("prediction_result", {})
+    result_data = session.get("analysis_result", {})
 
     label = result_data.get("label", "Unknown")
     image_path = result_data.get("image_path", "")
+    feedback_id = result_data.get("feedback_id", "")
     weather_data = result_data.get("weather_data", {})
 
-    # Clear session data after retrieval (optional, keeps session clean)
-    # session.pop('prediction_result', None)
+    # Check if feedback has already been submitted for this record
+    feedback_submitted = False
+    if feedback_id:
+        feedback = Feedback.query.get(feedback_id)
+        # We consider feedback "submitted" if is_correct was explicitly set 
+        # (in our current logic, we update the DB on click)
+        # However, since is_correct defaults to True, we check a session flag 
+        # or just rely on the session if the user reloads.
+        if session.get(f"feedback_submitted_{feedback_id}"):
+            feedback_submitted = True
 
     return render_template(
         "result.html",
         label=label,
         image_path=image_path,
+        feedback_id=feedback_id,
         weather_data=weather_data,
+        feedback_submitted=feedback_submitted,
         current_user=current_user,
     )
 
@@ -314,6 +348,14 @@ def predict():
 
             # Preprocess and predict
             try:
+                # Cloudinary Upload
+                try:
+                    upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
+                    cloudinary_url = upload_result.get("secure_url")
+                except Exception as e:
+                    app.logger.error(f"Cloudinary upload failed: {str(e)}")
+                    cloudinary_url = None
+
                 # ONNX Inference
                 input_data = preprocess_image(image)
                 ort_inputs = {ort_session.get_inputs()[0].name: input_data}
@@ -322,29 +364,38 @@ def predict():
                 predicted_class = np.argmax(outputs)
                 predicted_label = CLASS_NAMES.get(int(predicted_class), "Unknown")
 
+                # Save Initial Feedback/Log Entry
+                new_feedback = Feedback(
+                    image_url=cloudinary_url if cloudinary_url else os.path.basename(filepath),
+                    predicted_class=predicted_label,
+                    is_correct=True # Default until user feedback
+                )
+                db.session.add(new_feedback)
+                db.session.commit()
+
                 # Get weather data for current user if available
                 weather_data = get_current_user_weather()
 
                 # Prepare response data
-                # Use URL for samples, relative path for uploads
+                image_url = f"/uploads/{os.path.basename(filepath)}"
                 if "/static/samples/" in filepath:
                     image_url = f"/static/samples/{os.path.basename(filepath)}"
-                else:
-                    image_url = f"/uploads/{os.path.basename(filepath)}"
 
                 response_data = {
                     "success": True,
                     "label": predicted_label,
                     "image_url": image_url,
+                    "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                     "show_questionnaire": current_user.is_authenticated,
                     "redirect_url": url_for("result"),
                 }
 
                 # Store result in session
-                session["prediction_result"] = {
+                session["analysis_result"] = {
                     "label": predicted_label,
                     "image_path": image_url,
+                    "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                 }
 
@@ -796,29 +847,28 @@ def export_report():
 
 
 @app.route("/api/feedback", methods=["POST"])
-@login_required
 def submit_feedback():
+    """Submit user feedback for prediction accuracy and save to PostgreSQL."""
     try:
         data = request.json
-        classification = data.get("classification")
+        feedback_id = data.get("feedback_id")
         is_correct = data.get("is_correct")
-        actual_correct = data.get("actual_correct")
+        correct_class = data.get("correct_class")
 
-        # Define CSV file path
-        csv_path = os.path.join(app.root_path, "model_feedback.csv")
-        file_exists = os.path.isfile(csv_path)
-
-        import csv
-        with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            # Write header if new file
-            if not file_exists:
-                writer.writerow(["classification", "correct?", "actual correct according to user"])
+        # Update specific feedback record in PostgreSQL
+        feedback = Feedback.query.get(feedback_id)
+        if feedback:
+            feedback.is_correct = is_correct
+            if not is_correct and correct_class:
+                feedback.correct_class = correct_class
+            db.session.commit()
             
-            # Write feedback row
-            writer.writerow([classification, "Yes" if is_correct else "No", actual_correct])
-
-        return jsonify({"success": True, "message": "Feedback saved successfully"})
+            # Set a session flag so the UI remembers feedback was given on reload
+            session[f"feedback_submitted_{feedback_id}"] = True
+            
+            return jsonify({"success": True, "message": "PostgreSQL feedback updated successfully"})
+        
+        return jsonify({"success": False, "error": "Feedback record not found"}), 404
     except Exception as e:
         app.logger.error(f"Error saving feedback: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500

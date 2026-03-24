@@ -83,7 +83,7 @@
           </div>
 
           <!-- Feedback Section -->
-          <div id="feedbackContainer" class="mt-8 pt-6 border-t border-gray-100">
+          <div id="feedbackContainer" class="mt-8 pt-6 border-t border-gray-100 {% if feedback_submitted %}hidden{% endif %}">
             <p class="text-sm font-semibold text-gray-700 mb-3">Was this classification correct?</p>
             <div id="feedbackInitial" class="flex gap-4">
               <button onclick="submitFeedback(true)" class="flex-1 py-2 px-4 bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors font-medium">Yes, Correct</button>
@@ -289,7 +289,8 @@ function hideCorrectionUI() {
 
 async function submitFeedback(correct) {
     const classification = '{{ label }}';
-    let actualCorrect = classification;
+    const feedbackId = '{{ feedback_id }}';
+    let correctClass = classification;
     
     // If user clicked 'No' (correct=false), get the value from the select dropdown
     if (!correct) {
@@ -298,7 +299,7 @@ async function submitFeedback(correct) {
             alert('Please select the correct disease from the list.');
             return;
         }
-        actualCorrect = selectElement.value;
+        correctClass = selectElement.value;
     }
 
     try {
@@ -306,9 +307,9 @@ async function submitFeedback(correct) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                classification: classification,
+                feedback_id: feedbackId,
                 is_correct: correct,
-                actual_correct: actualCorrect
+                correct_class: correctClass
             })
         });
 

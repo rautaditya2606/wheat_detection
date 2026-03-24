@@ -1,0 +1,7 @@
+ id |                                              image_url                                               | predicted_class | correct_class | is_correct |         created_at         
+----+------------------------------------------------------------------------------------------------------+-----------------+---------------+------------+----------------------------
+  3 | https://res.cloudinary.com/dbzgvzeeh/image/upload/v1774352844/wheat_disease/dwu2r1csba45kdwcyu7e.png | Brown Rust      |               | t          | 2026-03-24 11:47:26.902104
+  2 | https://res.cloudinary.com/dbzgvzeeh/image/upload/v1774352714/wheat_disease/qpcaxg8sjbzt3fj2cdxf.jpg | Blast           |               | t          | 2026-03-24 11:45:14.848291
+  1 | https://res.cloudinary.com/dbzgvzeeh/image/upload/v1774352545/wheat_disease/ntwku27fjtf8cvxdhrvn.jpg | Leaf Blight     |               | t          | 2026-03-24 11:42:25.831283
+(3 rows)
+
