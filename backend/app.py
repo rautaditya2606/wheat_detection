@@ -235,11 +235,14 @@ def result():
     image_path = result_data.get("image_path", "")
     feedback_id = result_data.get("feedback_id", "")
     weather_data = result_data.get("weather_data", {})
+    cloudinary_url = result_data.get("cloudinary_url", "")
 
     # Check if feedback has already been submitted for this record
     feedback_submitted = False
     if feedback_id:
         feedback = Feedback.query.get(feedback_id)
+        if feedback and feedback.image_url and str(feedback.image_url).startswith("http"):
+            cloudinary_url = feedback.image_url
         # We consider feedback "submitted" if is_correct was explicitly set 
         # (in our current logic, we update the DB on click)
         # However, since is_correct defaults to True, we check a session flag 
@@ -251,6 +254,7 @@ def result():
         "result.html",
         label=label,
         image_path=image_path,
+        cloudinary_url=cloudinary_url,
         feedback_id=feedback_id,
         weather_data=weather_data,
         feedback_submitted=feedback_submitted,
@@ -385,6 +389,7 @@ def predict():
                     "success": True,
                     "label": predicted_label,
                     "image_url": image_url,
+                    "cloudinary_url": cloudinary_url,
                     "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                     "show_questionnaire": current_user.is_authenticated,
@@ -395,6 +400,7 @@ def predict():
                 session["analysis_result"] = {
                     "label": predicted_label,
                     "image_path": image_url,
+                    "cloudinary_url": cloudinary_url,
                     "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                 }

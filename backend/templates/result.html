@@ -59,6 +59,20 @@
             {% endif %}
           </div>
 
+          {% if cloudinary_url %}
+            <div class="mb-8 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+              <p class="text-sm font-semibold text-indigo-900">Saved Cloud Image URL</p>
+              <a
+                href="{{ cloudinary_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="mt-1 inline-block break-all text-sm text-indigo-700 underline hover:text-indigo-900"
+              >
+                {{ cloudinary_url }}
+              </a>
+            </div>
+          {% endif %}
+
           <div class="space-y-4">
             <button id="analyzeBtn" class="w-full group relative flex justify-center py-4 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 shadow-md hover:shadow-lg">
               <span class="absolute left-0 inset-y-0 flex items-center pl-3">
