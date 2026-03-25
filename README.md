@@ -182,4 +182,4 @@ python app.py
 
 ---
 
-Built by [Aditya Raut](https://github.com/rautaditya2606)
+Built by: [Aditya Raut](https://github.com/rautaditya2606) 
