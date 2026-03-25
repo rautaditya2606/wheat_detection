@@ -181,8 +181,15 @@
           })
     
           if (!response.ok) {
-            const error = await response.text()
-            throw new Error(error || 'Failed to process image')
+            const errorText = await response.text();
+            let errorMessage = 'Failed to process image';
+            try {
+              const errorJson = JSON.parse(errorText);
+              errorMessage = errorJson.error || errorMessage;
+            } catch (e) {
+              errorMessage = errorText || errorMessage;
+            }
+            throw new Error(errorMessage);
           }
     
           // Check if response is JSON
