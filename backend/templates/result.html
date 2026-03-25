@@ -73,6 +73,16 @@
                 {{ cloudinary_url }}
               </a>
             </div>
+          {% elif cloudinary_error %}
+            <div class="mb-8 rounded-xl border border-red-100 bg-red-50 p-4">
+              <p class="text-sm font-semibold text-red-900">Cloud Storage Error</p>
+              <p class="text-xs text-red-700 mt-1">
+                The image couldn't be uploaded to the cloud. Error: {{ cloudinary_error }}
+              </p>
+              <p class="text-xs text-red-600 mt-2 italic">
+                Check if your CLOUDINARY_API_KEY and other credentials are correctly set in the environment variables.
+              </p>
+            </div>
           {% endif %}
 
           <div class="space-y-4">

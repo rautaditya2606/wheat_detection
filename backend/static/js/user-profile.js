@@ -65,14 +65,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Close modal
     function closeAnswersModal() {
-        answersModal.classList.add('hidden');
+        if (answersModal) {
+            answersModal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
     }
 
-    closeModal.addEventListener('click', closeAnswersModal);
-    cancelChangesBtn.addEventListener('click', closeAnswersModal);
+    if (closeModal) {
+        closeModal.addEventListener('click', closeAnswersModal);
+    }
+    if (cancelChangesBtn) {
+        cancelChangesBtn.addEventListener('click', closeAnswersModal);
+    }
 
     // Save changes
-    saveChangesBtn.addEventListener('click', function() {
+    if (saveChangesBtn) {
+        saveChangesBtn.addEventListener('click', function() {
         const formData = new FormData();
         const inputs = answersContainer.querySelectorAll('input, textarea, select');
         

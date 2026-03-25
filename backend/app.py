@@ -237,6 +237,7 @@ def result():
     feedback_id = result_data.get("feedback_id", "")
     weather_data = result_data.get("weather_data", {})
     cloudinary_url = result_data.get("cloudinary_url", "")
+    cloudinary_error = result_data.get("cloudinary_error")
 
     # Check if feedback has already been submitted for this record
     feedback_submitted = False
@@ -244,6 +245,7 @@ def result():
         feedback = Feedback.query.get(feedback_id)
         if feedback and feedback.image_url and str(feedback.image_url).startswith("http"):
             cloudinary_url = feedback.image_url
+            cloudinary_error = None
         # We consider feedback "submitted" if is_correct was explicitly set 
         # (in our current logic, we update the DB on click)
         # However, since is_correct defaults to True, we check a session flag 
@@ -257,6 +259,7 @@ def result():
         confidence=confidence,
         image_path=image_path,
         cloudinary_url=cloudinary_url,
+        cloudinary_error=cloudinary_error,
         feedback_id=feedback_id,
         weather_data=weather_data,
         feedback_submitted=feedback_submitted,
@@ -355,11 +358,13 @@ def predict():
             # Preprocess and predict
             try:
                 # Cloudinary Upload
+                cloudinary_error = None
                 try:
                     upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
                     cloudinary_url = upload_result.get("secure_url")
                 except Exception as e:
-                    app.logger.error(f"Cloudinary upload failed: {str(e)}")
+                    cloudinary_error = str(e)
+                    app.logger.error(f"Cloudinary upload failed: {cloudinary_error}")
                     cloudinary_url = None
 
                 # ONNX Inference
@@ -404,6 +409,7 @@ def predict():
                     "confidence": f"{confidence_score:.2f}%",
                     "image_url": image_url,
                     "cloudinary_url": cloudinary_url,
+                    "cloudinary_error": cloudinary_error,
                     "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                     "show_questionnaire": current_user.is_authenticated,
@@ -416,6 +422,7 @@ def predict():
                     "confidence": f"{confidence_score:.2f}%",
                     "image_path": image_url,
                     "cloudinary_url": cloudinary_url,
+                    "cloudinary_error": cloudinary_error,
                     "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                 }
