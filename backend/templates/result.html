@@ -6,7 +6,9 @@
       <div class="md:flex">
         <!-- Image Section -->
         <div class="md:w-1/2 bg-gray-100 relative min-h-[400px]">
-          {% if image_path %}
+          {% if cloudinary_url %}
+            <img src="{{ cloudinary_url }}" alt="Analyzed wheat crop" class="absolute inset-0 w-full h-full object-cover" />
+          {% elif image_path %}
             <img src="{{ image_path }}" alt="Analyzed wheat crop" class="absolute inset-0 w-full h-full object-cover" />
           {% else %}
             <div class="flex items-center justify-center h-full text-gray-400">
