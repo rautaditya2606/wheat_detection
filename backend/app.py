@@ -232,6 +232,7 @@ def result():
     result_data = session.get("analysis_result", {})
 
     label = result_data.get("label", "Unknown")
+    confidence = result_data.get("confidence", "N/A")
     image_path = result_data.get("image_path", "")
     feedback_id = result_data.get("feedback_id", "")
     weather_data = result_data.get("weather_data", {})
@@ -253,6 +254,7 @@ def result():
     return render_template(
         "result.html",
         label=label,
+        confidence=confidence,
         image_path=image_path,
         cloudinary_url=cloudinary_url,
         feedback_id=feedback_id,
@@ -365,8 +367,19 @@ def predict():
                 ort_inputs = {ort_session.get_inputs()[0].name: input_data}
                 ort_outs = ort_session.run(None, ort_inputs)
                 outputs = ort_outs[0]
-                predicted_class = np.argmax(outputs)
+                
+                # Apply Softmax to get probabilities (confidence scores)
+                # handle 1D and 2D outputs
+                if len(outputs.shape) == 1:
+                    exp_outputs = np.exp(outputs - np.max(outputs))  # Numerical stability
+                    probabilities = exp_outputs / np.sum(exp_outputs)
+                else:
+                    exp_outputs = np.exp(outputs - np.max(outputs, axis=1, keepdims=True))
+                    probabilities = exp_outputs / np.sum(exp_outputs, axis=1, keepdims=True)
+                
+                predicted_class = np.argmax(probabilities)
                 predicted_label = CLASS_NAMES.get(int(predicted_class), "Unknown")
+                confidence_score = float(np.max(probabilities)) * 100
 
                 # Save Initial Feedback/Log Entry
                 new_feedback = Feedback(
@@ -388,6 +401,7 @@ def predict():
                 response_data = {
                     "success": True,
                     "label": predicted_label,
+                    "confidence": f"{confidence_score:.2f}%",
                     "image_url": image_url,
                     "cloudinary_url": cloudinary_url,
                     "feedback_id": new_feedback.id,
@@ -399,13 +413,14 @@ def predict():
                 # Store result in session
                 session["analysis_result"] = {
                     "label": predicted_label,
+                    "confidence": f"{confidence_score:.2f}%",
                     "image_path": image_url,
                     "cloudinary_url": cloudinary_url,
                     "feedback_id": new_feedback.id,
                     "weather_data": weather_data,
                 }
 
-                app.logger.info(f"Prediction successful: {predicted_label}")
+                app.logger.info(f"Prediction successful: {predicted_label} with {confidence_score:.2f}% confidence")
                 return jsonify(response_data)
 
             except Exception as e:

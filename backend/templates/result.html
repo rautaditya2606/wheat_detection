@@ -33,7 +33,7 @@
                 </div>
                 <div>
                   <h3 class="text-xl font-bold text-green-700">Healthy Crop</h3>
-                  <p class="text-green-600 text-sm">No diseases detected</p>
+                  <p class="text-green-600 text-sm">No diseases detected {% if confidence %}({{ confidence }} confidence){% endif %}</p>
                 </div>
               {% else %}
                 <div class="flex items-center justify-center w-12 h-12 rounded-full bg-red-100 text-red-600">
@@ -43,7 +43,7 @@
                 </div>
                 <div>
                   <h3 class="text-xl font-bold text-red-700">{{ label }} Detected</h3>
-                  <p class="text-red-600 text-sm">Immediate attention recommended</p>
+                  <p class="text-red-600 text-sm">Immediate attention recommended {% if confidence %}({{ confidence }} confidence){% endif %}</p>
                 </div>
               {% endif %}
             </div>
