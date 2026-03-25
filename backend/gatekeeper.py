@@ -15,24 +15,28 @@ class ModelGatekeeper:
             self.device = "cpu"
             self.model, self.preprocess = clip.load(model_name, device=self.device)
         
-        # Define the categories for validation
-        self.labels = [
-            "a photo of wheat", 
-            "a photo of a crop", 
-            "a photo of a plant",
-            "a photo of a field",
-            "an animal", 
-            "a person", 
-            "a car", 
-            "a building",
-            "random noise",
-            "a diagram"
+        # Group labels for combined scoring
+        self.wheat_labels = [
+            "a photo of wheat crop",
+            "a photo of wheat plant disease",
+            "a photo of wheat leaves",
+            "a photo of wheat field",
         ]
-        self.text_tokens = clip.tokenize(self.labels).to(self.device)
+        self.non_wheat_labels = [
+            "a photo of an animal", 
+            "a photo of a person", 
+            "a photo of a car", 
+            "a photo of a building",
+            "a diagram",
+            "a photo of something else"
+        ]
+        
+        self.all_labels = self.wheat_labels + self.non_wheat_labels
+        self.text_tokens = clip.tokenize(self.all_labels).to(self.device)
 
-    def is_valid_input(self, image_path, threshold=0.4):
+    def is_valid_input(self, image_path, threshold=0.6):
         """
-        Returns (is_valid, top_label, confidence)
+        Returns (is_valid, wheat_score, top_non_wheat_label)
         """
         try:
             image = self.preprocess(Image.open(image_path)).unsqueeze(0).to(self.device)
@@ -41,24 +45,21 @@ class ModelGatekeeper:
                 logits_per_image, _ = self.model(image, self.text_tokens)
                 probs = logits_per_image.softmax(dim=-1).cpu().numpy()[0]
             
-            # Find the top prediction
-            top_idx = probs.argmax()
-            top_label = self.labels[top_idx]
-            confidence = probs[top_idx]
+            # Sum all wheat label probabilities together for binary domain validation
+            wheat_score = float(probs[:len(self.wheat_labels)].sum())
             
-            # Logic: Valid if top prediction is wheat, crop, field or plant
-            valid_keywords = ["wheat", "crop", "field", "plant"]
-            is_valid = any(kw in top_label.lower() for kw in valid_keywords)
+            # Find the top non-wheat label for debugging/feedback
+            non_wheat_probs = probs[len(self.wheat_labels):]
+            top_non_wheat_idx = non_wheat_probs.argmax()
+            top_non_wheat_label = self.non_wheat_labels[top_non_wheat_idx]
             
-            # Even if it matches keywords, ensure confidence is reasonable
-            if confidence < threshold:
-                is_valid = False
+            is_valid = wheat_score > threshold
                 
-            return is_valid, top_label, confidence
+            return is_valid, wheat_score, top_non_wheat_label
             
         except Exception as e:
             print(f"Error in Gatekeeper: {e}")
-            return False, "error", 0.0
+            return False, 0.0, "error"
 
 if __name__ == "__main__":
     # Test script
@@ -66,7 +67,7 @@ if __name__ == "__main__":
     # Replace with a local sample if available
     test_path = "static/uploads/test.jpg" 
     if os.path.exists(test_path):
-        valid, label, conf = gatekeeper.is_valid_input(test_path)
-        print(f"Result: {'VALID' if valid else 'INVALID'} | Label: {label} | Conf: {conf:.2f}")
+        valid, score, top_label = gatekeeper.is_valid_input(test_path)
+        print(f"Result: {'VALID' if valid else 'INVALID'} | Wheat Score: {score:.2f} | Top Non-Wheat: {top_label}")
     else:
         print(f"Please place a test image at {test_path} to verify.")

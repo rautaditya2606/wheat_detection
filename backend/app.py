@@ -361,15 +361,15 @@ def predict():
 
             # CLIP Input Validation (Gatekeeper)
             if gatekeeper:
-                is_valid, top_label, confidence = gatekeeper.is_valid_input(filepath)
+                is_valid, wheat_score, top_non_wheat_label = gatekeeper.is_valid_input(filepath)
                 if not is_valid:
-                    app.logger.warning(f"Rejecting image. CLIP label: {top_label} (Conf: {confidence:.2f})")
+                    app.logger.warning(f"Rejecting image. Wheat Score: {wheat_score:.2f}, Highest Non-Wheat Label: {top_non_wheat_label}")
                     if os.path.exists(filepath):
                         os.remove(filepath)
                     return jsonify({
-                        "error": f"Invalid image. We only accept wheat crop images. (Detected: {top_label})",
-                        "detected": top_label,
-                        "confidence": float(confidence)
+                        "error": f"Invalid image. We only accept wheat crop images. (Detected: {top_non_wheat_label})",
+                        "detected": top_non_wheat_label,
+                        "wheat_confidence": float(wheat_score)
                     }), 400
 
             # Preprocess and predict
