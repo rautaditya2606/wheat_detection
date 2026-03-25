@@ -48,7 +48,6 @@ from models import user_db, User, db, Feedback
 from user_data import user_data, QUESTIONNAIRE
 from utils import get_weather_data, get_llm_recommendation
 from location import location_bp, get_ip_geolocation, reverse_geocode
-from gatekeeper import ModelGatekeeper
 
 load_dotenv()
 
@@ -99,14 +98,6 @@ app.register_blueprint(location_bp, url_prefix="")
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-
-# Initialize CLIP Gatekeeper
-try:
-    gatekeeper = ModelGatekeeper()
-    print("Successfully initialized CLIP Gatekeeper")
-except Exception as e:
-    print(f"Error initializing CLIP Gatekeeper: {e}")
-    gatekeeper = None
 
 
 @login_manager.user_loader
@@ -358,19 +349,6 @@ def predict():
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({"error": "Invalid image file"}), 400
-
-            # CLIP Input Validation (Gatekeeper)
-            if gatekeeper:
-                is_valid, wheat_score, top_non_wheat_label = gatekeeper.is_valid_input(filepath)
-                if not is_valid:
-                    app.logger.warning(f"Rejecting image. Wheat Score: {wheat_score:.2f}, Highest Non-Wheat Label: {top_non_wheat_label}")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-                    return jsonify({
-                        "error": f"Invalid image. We only accept wheat crop images. (Detected: {top_non_wheat_label})",
-                        "detected": top_non_wheat_label,
-                        "wheat_confidence": float(wheat_score)
-                    }), 400
 
             # Preprocess and predict
             try:

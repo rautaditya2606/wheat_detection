@@ -13,11 +13,6 @@ asgiref==3.10.0
 onnxruntime>=1.16.0
 Pillow>=10.4.0
 numpy>=1.24.0
-torch>=1.13.0
-torchvision>=0.14.0
-ftfy
-regex
-git+https://github.com/openai/CLIP.git
 
 # Web & API
 requests==2.31.0
