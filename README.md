@@ -21,33 +21,52 @@ This demonstrates end-to-end engineering across ML inference, backend architectu
 
 ## Architecture
 
+```mermaid
+graph TD
+    User([User's Browser]) -->|Upload Image| Backend
+    User -->|Location + Data| Backend
+    
+    subgraph "Flask Backend (backend/app.py)"
+    Backend{Flask Server}
+    Backend -->|1. Upload| Cloudinary[Cloudinary Storage]
+    Backend -->|2. Validate URL| CLIP[Hugging Face CLIP Space]
+    Backend -->|3a. Rejection| Purge[Purge Cloudinary ID]
+    Backend -->|3b. Approval| ResNet[ResNet50 ONNX Engine]
+    ResNet -->|4. Log| ClickHouse[Aiven ClickHouse]
+    end
+    
+    subgraph "External Context"
+    Backend --- Weather[OpenWeather API]
+    Backend --- LLM[OpenAI GPT-3.5]
+    end
+    
+    Backend -->|Result| Response[UI Response]
+    
+    subgraph "Admin Controls"
+    Admin([Security Admin]) -->|Audit/Delete| Dashboard[/admin]
+    Dashboard --> ClickHouse
+    Dashboard --> Cloudinary
+    end
 ```
-User (Browser)
-  -> Upload image
-  -> Submit location + questionnaire
 
-Flask App (backend/app.py)
-  -> ONNX Runtime inference (quantized ResNet50)
-  -> Uploads image to Cloudinary
-  -> Stores prediction + feedback record in Aiven ClickHouse
-  -> Returns label + image URL + feedback ID
+### Flow Logic
+1. **Cloud-First Validation**: Every upload hits Cloudinary first to generate a persistent URL for downstream microservices.
+2. **CLIP Gatekeeper**: The Hugging Face microservice analyzes the URL. If the "Wheat Score" is below the threshold, the backend immediately calls `destroy()` on the Cloudinary image to minimize storage footprint.
+3. **ResNet50 Inference**: Only validated wheat photos reach the classification model.
+4. **Data Integrity**: Predictions are stored in Aiven ClickHouse for high-speed retrieval of historical disease patterns.
 
-Context / Recommendation Layer
-  -> WeatherAPI for real-time weather context
-  -> OpenAI GPT-3.5-Turbo for treatment recommendation generation
-
-Persistence Layer
-  -> Cloudinary: image asset storage (linked via URL)
-  -> Aiven ClickHouse: prediction events + labeled feedback records
-```
 
 ---
 
 ## Core Features
 
+- **Multi-Stage AI Validation (CLIP Gatekeeper)** — Uses a specialized CLIP microservice to validate images before processing. If an image is not a wheat crop, it is automatically rejected and purged from storage to save costs and maintain data quality.
+- **Microservice Architecture** — Decoupled CLIP validation hosted on Hugging Face Spaces for efficient resource management.
 - **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 accuracy across 15 wheat disease classes
 - **INT8 Quantization** — Model size reduced from 90MB to 22.6MB (75% reduction), faster cold-starts on CPU deployment
 - **Human-in-the-Loop Feedback** — Users confirm or correct predictions; labeled images stored for future retraining
+- **Admin Monitoring Dashboard** — Secure `/admin` interface for auditing predictions, monitoring system health, and manual data purging.
+- **Cloud-Native Persistence** — Seamless integration with Cloudinary for asset management and Aiven ClickHouse for high-performance telemetry storage.
 - **Context-Aware Recommendations** — Real-time weather + geolocation fed to GPT-3.5-Turbo for field-specific guidance
 - **PDF Report Export** — Downloadable diagnostic report with image, prediction, and treatment plan
 - **Responsive UI** — Mobile-first design with Tailwind CSS for field access
