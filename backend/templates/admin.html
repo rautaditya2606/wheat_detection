@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Admin Monitoring Dashboard</h2>
+        <span class="badge bg-secondary">{{ feedbacks|length }} Total Images</span>
+    </div>
+
+    {% if not feedbacks %}
+    <div class="alert alert-info">
+        No images found in the system.
+    </div>
+    {% else %}
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>Image</th>
+                    <th>Auto-Prediction (CLIP/ResNet)</th>
+                    <th>User Feedback</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in feedbacks %}
+                <tr>
+                    <td>
+                        <a href="{{ item.image_url if item.image_url.startswith('http') else '/uploads/' + item.image_url }}" target="_blank">
+                            <img src="{{ item.image_url if item.image_url.startswith('http') else '/uploads/' + item.image_url }}" 
+                                 alt="Thumbnail" class="img-thumbnail" style="max-height: 80px;">
+                        </a>
+                    </td>
+                    <td>
+                        <strong>{{ item.predicted_class }}</strong>
+                    </td>
+                    <td>
+                        {% if item.is_correct %}
+                        <span class="badge bg-success">Auto-Approved / User Agreed</span>
+                        {% else %}
+                        <span class="badge bg-danger">User Disagreed (Target: {{ item.correct_class }})</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        <form action="{{ url_for('admin_delete', feedback_id=item.id) }}" method="POST" style="display:inline;" 
+                              onsubmit="return confirm('Kill this image? It will be removed from Cloudinary and DB.');">
+                            <button type="submit" class="btn btn-sm btn-danger">Delete Image</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

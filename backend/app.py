@@ -31,10 +31,13 @@ from flask_login import (
 )
 import uvicorn
 import re
+import requests
+import json
 import numpy as np
 import onnxruntime as ort
 import cloudinary
 import cloudinary.uploader
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from PIL import Image
 from collections import OrderedDict
@@ -44,12 +47,16 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage, Table, TableStyle
 from werkzeug.utils import secure_filename
+from functools import wraps
 from models import user_db, User, db, Feedback
 from user_data import user_data, QUESTIONNAIRE
 from utils import get_weather_data, get_llm_recommendation
 from location import location_bp, get_ip_geolocation, reverse_geocode
 
 load_dotenv()
+
+# CLIP Microservice Configuration
+CLIP_VERIFY_URL = os.getenv("CLIP_VERIFY_URL", "http://127.0.0.1:8000/verify-crop/")
 
 # Cloudinary configuration
 cloudinary.config(
@@ -72,6 +79,9 @@ def get_current_user_weather():
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
+
+# Initialize ThreadPoolExecutor for background/parallel tasks
+executor = ThreadPoolExecutor(max_workers=4)
 
 # Configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
@@ -111,6 +121,18 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 # Ensure upload and data directories exist
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs("data", exist_ok=True)
+
+# Admin authentication helper
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not (auth.username == os.getenv("ADMIN_USERNAME") and auth.password == os.getenv("ADMIN_PASSWORD")):
+            return make_response('Could not verify your access level for that URL.\n'
+                                'You have to login with proper credentials', 401,
+                                {'WWW-Authenticate': 'Basic realm="Login Required"'})
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Disease labels
 CLASS_NAMES = {
@@ -218,6 +240,40 @@ def logout():
     return redirect(url_for("index"))
 
 
+# Admin Routes
+
+@app.route("/admin")
+@admin_required
+def admin_panel():
+    # Show all images so admin can monitor everything and delete bad data
+    feedbacks = Feedback.query.order_by(Feedback.created_at.desc()).all()
+    return render_template("admin.html", feedbacks=feedbacks, current_user=current_user)
+
+@app.route("/admin/delete/<feedback_id>", methods=["POST"])
+@admin_required
+def admin_delete(feedback_id):
+    feedback = Feedback.query.get_or_404(feedback_id)
+    
+    # 1. Attempt to delete from Cloudinary if it's a URL
+    if feedback.image_url and feedback.image_url.startswith("http"):
+        try:
+            # Extract public_id from cloudinary URL
+            # Format: .../folder/public_id.jpg
+            public_id = feedback.image_url.split('/')[-1].split('.')[0]
+            # If it's in a folder, we might need 'wheat_disease/' prefix
+            cloudinary.uploader.destroy(f"wheat_disease/{public_id}")
+            app.logger.info(f"Deleted Cloudinary resource: {public_id}")
+        except Exception as e:
+            app.logger.error(f"Failed to delete from Cloudinary: {e}")
+
+    # 2. Delete from ClickHouse
+    db.session.delete(feedback)
+    db.session.commit()
+    
+    flash("Entry and image deleted successfully.", "warning")
+    return redirect(url_for("admin_panel"))
+
+
 # Main Routes
 
 
@@ -285,6 +341,9 @@ def questionnaire():
 def predict():
     try:
         app.logger.info("Received request to /predict endpoint")
+        filepath = None
+        cloudinary_url = None
+        public_id = None
 
         # Handle sample image selection (JSON request)
         if request.is_json:
@@ -341,102 +400,134 @@ def predict():
             file.save(filepath)
             app.logger.info(f"File saved to {filepath}")
 
-        try:
-            # Open and verify image
+            # CLIP Validation (Hugging Face Space)
+            app.logger.info(f"Sending image URL for CLIP validation to {CLIP_VERIFY_URL}")
             try:
-                image = Image.open(filepath).convert("RGB")
-                # For saved files we might want to verify, but for samples we know they are valid
-                if "/static/samples/" not in filepath:
-                    image.verify()
-                    image = Image.open(filepath).convert("RGB")
-            except Exception as e:
-                app.logger.error(f"Invalid image file: {str(e)}")
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({"error": "Invalid image file"}), 400
-
-            # Preprocess and predict
-            try:
-                # Cloudinary Upload
-                cloudinary_error = None
-                try:
-                    upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
-                    cloudinary_url = upload_result.get("secure_url")
-                except Exception as e:
-                    cloudinary_error = str(e)
-                    app.logger.error(f"Cloudinary upload failed: {cloudinary_error}")
-                    cloudinary_url = None
-
-                # ONNX Inference
-                input_data = preprocess_image(image)
-                ort_inputs = {ort_session.get_inputs()[0].name: input_data}
-                ort_outs = ort_session.run(None, ort_inputs)
-                outputs = ort_outs[0]
+                # 1. Start Cloudinary Upload FIRST (Needed because validation is now URL-based)
+                # We upload even if it's junk, but we'll purge it in a few lines if validation fails.
+                upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
+                cloudinary_url = upload_result.get("secure_url")
+                public_id = upload_result.get("public_id")
                 
-                # Apply Softmax to get probabilities (confidence scores)
-                # handle 1D and 2D outputs
-                if len(outputs.shape) == 1:
-                    exp_outputs = np.exp(outputs - np.max(outputs))  # Numerical stability
-                    probabilities = exp_outputs / np.sum(exp_outputs)
+                # 2. Call Hugging Face Space CLIP Validation
+                # No trailing slash for HF Spaces to avoid 405/500 redirect loops
+                val_url = CLIP_VERIFY_URL.rstrip('/')
+                val_response = requests.post(val_url, json={"image_url": cloudinary_url}, timeout=45)
+                
+                if val_response.status_code == 200:
+                    val_data = val_response.json()
+                    # Updated to match your final HF Space code: {"is_valid": True/False, "wheat_score": ...}
+                    is_valid = val_data.get('is_valid', True)
+                    wheat_score = val_data.get('wheat_score', 0.0)
+                    
+                    if not is_valid:
+                        app.logger.warning(f"CLIP validation failed (Score: {wheat_score}). Purging image.")
+                        # Purge from Cloudinary immediately
+                        if public_id:
+                            cloudinary.uploader.destroy(public_id)
+                        if "/static/samples/" not in filepath and os.path.exists(filepath):
+                            os.remove(filepath)
+                        return jsonify({
+                            "error": f"Image validation failed: This doesn't look like a wheat crop (Wheat Confidence: {wheat_score*100:.2f}%)",
+                            "success": False
+                        }), 400
                 else:
-                    exp_outputs = np.exp(outputs - np.max(outputs, axis=1, keepdims=True))
-                    probabilities = exp_outputs / np.sum(exp_outputs, axis=1, keepdims=True)
-                
-                predicted_class = np.argmax(probabilities)
-                predicted_label = CLASS_NAMES.get(int(predicted_class), "Unknown")
-                confidence_score = float(np.max(probabilities)) * 100
-
-                # Save Initial Feedback/Log Entry
-                new_feedback = Feedback(
-                    image_url=cloudinary_url if cloudinary_url else os.path.basename(filepath),
-                    predicted_class=predicted_label,
-                    is_correct=True # Default until user feedback
-                )
-                db.session.add(new_feedback)
-                db.session.commit()
-
-                # Get weather data for current user if available
-                weather_data = get_current_user_weather()
-
-                # Prepare response data
-                image_url = f"/uploads/{os.path.basename(filepath)}"
-                if "/static/samples/" in filepath:
-                    image_url = f"/static/samples/{os.path.basename(filepath)}"
-
-                response_data = {
-                    "success": True,
-                    "label": predicted_label,
-                    "confidence": f"{confidence_score:.2f}%",
-                    "image_url": image_url,
-                    "cloudinary_url": cloudinary_url,
-                    "cloudinary_error": cloudinary_error,
-                    "feedback_id": new_feedback.id,
-                    "weather_data": weather_data,
-                    "show_questionnaire": current_user.is_authenticated,
-                    "redirect_url": url_for("result"),
-                }
-
-                # Store result in session
-                session["analysis_result"] = {
-                    "label": predicted_label,
-                    "confidence": f"{confidence_score:.2f}%",
-                    "image_path": image_url,
-                    "cloudinary_url": cloudinary_url,
-                    "cloudinary_error": cloudinary_error,
-                    "feedback_id": new_feedback.id,
-                    "weather_data": weather_data,
-                }
-
-                app.logger.info(f"Prediction successful: {predicted_label} with {confidence_score:.2f}% confidence")
-                return jsonify(response_data)
+                    app.logger.error(f"HF Space returned error {val_response.status_code}")
 
             except Exception as e:
-                app.logger.error(f"Error during prediction: {str(e)}", exc_info=True)
-                return jsonify({"error": "Error processing image"}), 500
+                app.logger.error(f"Error during CLIP validation: {str(e)}")
+                # Continue if validation is down to avoid blocking user
+
+        # Open and verify image (ResNet50 processing)
+        try:
+            if not filepath:
+                    return jsonify({"error": "File path not established"}), 400
+                    
+            image = Image.open(filepath).convert("RGB")
+            # For saved files we might want to verify, but for samples we know they are valid
+            if "/static/samples/" not in filepath:
+                image.verify()
+                # After verify() we MUST reopen the file because verify() consumes the stream
+                image = Image.open(filepath).convert("RGB")
+        except Exception as e:
+            app.logger.error(f"Invalid image file: {str(e)}")
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({"error": "Invalid image file"}), 400
+
+        # Preprocess and predict
+        try:
+            # Start ResNet50 Inference
+            input_data = preprocess_image(image)
+            ort_inputs = {ort_session.get_inputs()[0].name: input_data}
+            ort_outs = ort_session.run(None, ort_inputs)
+            outputs = ort_outs[0]
+            
+            # ... (rest of processing using the cloudinary_url we already created)
+            # Apply Softmax to get probabilities (confidence scores)
+            if len(outputs.shape) == 1:
+                exp_outputs = np.exp(outputs - np.max(outputs))
+                probabilities = exp_outputs / np.sum(exp_outputs)
+            else:
+                exp_outputs = np.exp(outputs - np.max(outputs, axis=1, keepdims=True))
+                probabilities = exp_outputs / np.sum(exp_outputs, axis=1, keepdims=True)
+            
+            predicted_class = np.argmax(probabilities)
+            predicted_label = CLASS_NAMES.get(int(predicted_class), "Unknown")
+            confidence_score = float(np.max(probabilities)) * 100
+
+            # Wait for Cloudinary upload result (already done above, but we reuse the vars)
+            cloudinary_error = None
+            if not cloudinary_url:
+                cloudinary_error = "Upload failed during validation step"
+
+            # Save Initial Feedback/Log Entry to Aiven (ClickHouse)
+            new_feedback = Feedback(
+                image_url=cloudinary_url if cloudinary_url else os.path.basename(filepath),
+                predicted_class=predicted_label,
+                is_correct=True # Default until user feedback
+            )
+            db.session.add(new_feedback)
+            db.session.commit()
+
+            # Get weather data for current user if available
+            weather_data = get_current_user_weather()
+
+            # Prepare response data
+            image_url = f"/uploads/{os.path.basename(filepath)}"
+            if "/static/samples/" in filepath:
+                image_url = f"/static/samples/{os.path.basename(filepath)}"
+
+            response_data = {
+                "success": True,
+                "label": predicted_label,
+                "confidence": f"{confidence_score:.2f}%",
+                "image_url": image_url,
+                "cloudinary_url": cloudinary_url,
+                "cloudinary_error": cloudinary_error,
+                "feedback_id": new_feedback.id,
+                "weather_data": weather_data,
+                "show_questionnaire": current_user.is_authenticated,
+                "redirect_url": url_for("result"),
+            }
+
+            # Store result in session
+            session["analysis_result"] = {
+                "label": predicted_label,
+                "confidence": f"{confidence_score:.2f}%",
+                "image_path": image_url,
+                "cloudinary_url": cloudinary_url,
+                "cloudinary_error": cloudinary_error,
+                "feedback_id": new_feedback.id,
+                "weather_data": weather_data,
+            }
+
+            app.logger.info(f"Prediction successful: {predicted_label} with {confidence_score:.2f}% confidence")
+            return jsonify(response_data)
 
         except Exception as e:
-            app.logger.error(f"Error processing file: {str(e)}", exc_info=True)
-            return jsonify({"error": "Error processing file"}), 500
+            app.logger.error(f"Error during prediction: {str(e)}", exc_info=True)
+            return jsonify({"error": "Error processing image"}), 500
 
     except Exception as e:
         app.logger.error(f"Unexpected error in predict route: {str(e)}", exc_info=True)

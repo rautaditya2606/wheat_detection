@@ -23,6 +23,8 @@ class Feedback(db.Model):
     predicted_class = db.Column(db.String, nullable=False)
     correct_class = db.Column(db.String, nullable=True) # Populated if user says prediction was wrong
     is_correct = db.Column(db.Boolean, default=True)
+    is_verified = db.Column(db.Boolean, default=False)  # Added for Human-in-the-Loop review
+    used_in_training = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
