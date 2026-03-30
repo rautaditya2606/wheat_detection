@@ -355,12 +355,24 @@ def predict():
                     return jsonify({"error": "Invalid sample path"}), 400
                 
                 # Convert URL path to local path
-                local_path = os.path.join(app.root_path, sample_path.lstrip("/"))
-                if not os.path.exists(local_path):
+                # Use os.path.join with app.root_path and strip leading slash
+                relative_path = sample_path.lstrip('/')
+                filepath = os.path.join(app.root_path, relative_path)
+                
+                if not os.path.exists(filepath):
+                    app.logger.error(f"Sample file not found at: {filepath}")
                     return jsonify({"error": "Sample file not found"}), 404
                 
-                filepath = local_path
                 app.logger.info(f"Using sample image: {filepath}")
+                
+                # IMPORTANT: For sample images, we also need to upload to Cloudinary 
+                # for the CLIP validation (which is URL-based)
+                try:
+                    upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
+                    cloudinary_url = upload_result.get("secure_url")
+                    public_id = upload_result.get("public_id")
+                except Exception as ce:
+                    app.logger.error(f"Cloudinary upload failed for sample: {str(ce)}")
             else:
                 return jsonify({"error": "No sample path provided"}), 400
         
@@ -408,31 +420,37 @@ def predict():
                 upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
                 cloudinary_url = upload_result.get("secure_url")
                 public_id = upload_result.get("public_id")
-                
-                # 2. Call Hugging Face Space CLIP Validation
-                # No trailing slash for HF Spaces to avoid 405/500 redirect loops
-                val_url = CLIP_VERIFY_URL.rstrip('/')
-                val_response = requests.post(val_url, json={"image_url": cloudinary_url}, timeout=45)
-                
-                if val_response.status_code == 200:
-                    val_data = val_response.json()
-                    # Updated to match your final HF Space code: {"is_valid": True/False, "wheat_score": ...}
-                    is_valid = val_data.get('is_valid', True)
-                    wheat_score = val_data.get('wheat_score', 0.0)
+            except Exception as ce:
+                app.logger.error(f"Cloudinary upload failed for upload: {str(ce)}")
+
+            try:
+                if cloudinary_url:
+                    # 2. Call Hugging Face Space CLIP Validation
+                    # No trailing slash for HF Spaces to avoid 405/500 redirect loops
+                    val_url = CLIP_VERIFY_URL.rstrip('/')
+                    val_response = requests.post(val_url, json={"image_url": cloudinary_url}, timeout=45)
                     
-                    if not is_valid:
-                        app.logger.warning(f"CLIP validation failed (Score: {wheat_score}). Purging image.")
-                        # Purge from Cloudinary immediately
-                        if public_id:
-                            cloudinary.uploader.destroy(public_id)
-                        if "/static/samples/" not in filepath and os.path.exists(filepath):
-                            os.remove(filepath)
-                        return jsonify({
-                            "error": f"Image validation failed: This doesn't look like a wheat crop (Wheat Confidence: {wheat_score*100:.2f}%)",
-                            "success": False
-                        }), 400
+                    if val_response.status_code == 200:
+                        val_data = val_response.json()
+                        # Updated to match your final HF Space code: {"is_valid": True/False, "wheat_score": ...}
+                        is_valid = val_data.get('is_valid', True)
+                        wheat_score = val_data.get('wheat_score', 0.0)
+                        
+                        if not is_valid:
+                            app.logger.warning(f"CLIP validation failed (Score: {wheat_score}). Purging image.")
+                            # Purge from Cloudinary immediately
+                            if public_id:
+                                cloudinary.uploader.destroy(public_id)
+                            if "/static/samples/" not in filepath and os.path.exists(filepath):
+                                os.remove(filepath)
+                            return jsonify({
+                                "error": f"Image validation failed: This doesn't look like a wheat crop (Wheat Confidence: {wheat_score*100:.2f}%)",
+                                "success": False
+                            }), 400
+                    else:
+                        app.logger.error(f"HF Space returned error {val_response.status_code}")
                 else:
-                    app.logger.error(f"HF Space returned error {val_response.status_code}")
+                    app.logger.warning("Skipping CLIP validation as Cloudinary URL is missing")
 
             except Exception as e:
                 app.logger.error(f"Error during CLIP validation: {str(e)}")
