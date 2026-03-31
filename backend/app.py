@@ -55,6 +55,8 @@ from location import location_bp, get_ip_geolocation, reverse_geocode
 
 load_dotenv()
 
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9]+$")
+
 # CLIP Microservice Configuration
 CLIP_VERIFY_URL = os.getenv("CLIP_VERIFY_URL", "http://127.0.0.1:8000/verify-crop/")
 
@@ -219,11 +221,15 @@ def signup():
         return redirect(url_for("index"))
 
     if request.method == "POST":
-        username = request.form.get("username")
-        email = request.form.get("email")
+        username = (request.form.get("username") or "").strip()
+        email = (request.form.get("email") or "").strip()
         password = request.form.get("password")
 
-        if user_db.get_user_by_username(username):
+        if not username:
+            flash("Username is required", "danger")
+        elif not USERNAME_PATTERN.fullmatch(username):
+            flash("Username can only contain letters and numbers", "danger")
+        elif user_db.get_user_by_username(username):
             flash("Username already exists", "danger")
         else:
             user_db.add_user(username, password, email)

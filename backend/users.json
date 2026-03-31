@@ -42,5 +42,17 @@
       "planting_date": "2020-12-12",
       "additional_notes": ""
     }
+  },
+  "3": {
+    "id": "3",
+    "username": "#$@*#U@*#@",
+    "password_hash": "scrypt:32768:8:1$QqLjbTkDycjhhRaO$c4240e09b0e73bec678fee43c6c1896dabe5350d223b0a4c66ce122603a2dcfa6560c512f0ba422c15469e37201c1109d670a668f59b7bbcae066ee38f4c2343",
+    "email": "rautaditya2606@gmail.com",
+    "location_type": "manual",
+    "manual_location": null,
+    "latitude": null,
+    "longitude": null,
+    "weather_data": {},
+    "questionnaire_responses": {}
   }
 }

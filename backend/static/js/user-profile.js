@@ -15,14 +15,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const isExpanded = userMenuButton.getAttribute('aria-expanded') === 'true';
         userMenuButton.setAttribute('aria-expanded', !isExpanded);
         userDropdown.classList.toggle('hidden');
+        userDropdown.classList.toggle('show');
         dropdownArrow.classList.toggle('rotate-180');
     }
 
     // Close dropdown
     function closeDropdown() {
-        userMenuButton.setAttribute('aria-expanded', 'false');
-        userDropdown.classList.add('hidden');
-        dropdownArrow.classList.remove('rotate-180');
+        if (userMenuButton && userDropdown) {
+            userMenuButton.setAttribute('aria-expanded', 'false');
+            userDropdown.classList.add('hidden');
+            userDropdown.classList.remove('show');
+            dropdownArrow.classList.remove('rotate-180');
+        }
     }
 
     // Event Listeners
@@ -112,6 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('An error occurred while updating your answers.');
         });
     });
+    }
 
     // Fetch user answers
     function fetchUserAnswers() {

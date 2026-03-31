@@ -86,3 +86,24 @@ body {
 .alert-enter {
     animation: fadeIn 0.3s ease-out forwards;
 }
+
+/* Dropdown specific styles */
+#userDropdown {
+    display: none;
+    z-index: 1000;
+}
+
+#userDropdown.show {
+    display: block !important;
+    transform: scale(1);
+    opacity: 1;
+}
+
+.rotate-180 {
+    transform: rotate(180deg);
+}
+
+/* Glassmorphism/Shadow effects */
+.shadow-xl {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
