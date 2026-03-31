@@ -91,7 +91,7 @@ ADDITIONAL FARM PARAMETERS:
 {answers_str}
 
 REQUIRED OUTPUT FORMAT:
-Return the recommendation as a sequence of DIV blocks. Use the following structure exactly:
+Return the recommendation as a sequence of DIV blocks. Use the following structure exactly don't send any markdown symbols like ''' or # or * '''html tags in the content:
 
 <div class="analysis-section mb-6">
   <h3 class="text-xl font-bold text-blue-800 border-b-2 border-blue-200 pb-2 mb-4">I. Scientific Analysis</h3>
@@ -116,6 +116,8 @@ Return the recommendation as a sequence of DIV blocks. Use the following structu
 
 INSTRUCTIONS:
 - Use professional yet accessible language.
+- give detailed recommendations that are actionable and specific to the farmer's context.
+- Avoid generic advice; tailor it to the disease, weather, and farm parameters provided.
 - Ensure the HTML is valid.
 - DO NOT use markdown symbols like # or * within the code.
 """
