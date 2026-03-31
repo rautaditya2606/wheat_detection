@@ -2,7 +2,7 @@
 
 > Production-style web platform for wheat disease detection with contextual AI recommendations.
 
-**[Live Demo](https://wheat-detection-1.onrender.com/)**
+**[Live Demo](https://wheat-detection-es09.onrender.com/)**
 
 ---
 
@@ -43,9 +43,9 @@ graph TD
     Backend -->|Result| Response[UI Response]
     
     subgraph "Admin Controls"
-    Admin([Security Admin]) -->|Audit/Delete| Dashboard[/admin]
-    Dashboard --> ClickHouse
-    Dashboard --> Cloudinary
+    Admin([Security Admin]) -->|Audit/Delete| Dash[Dashboard]
+    Dash --> ClickHouse
+    Dash --> Cloudinary
     end
 ```
 
