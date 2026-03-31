@@ -91,35 +91,37 @@ ADDITIONAL FARM PARAMETERS:
 {answers_str}
 
 REQUIRED OUTPUT FORMAT:
-Return the recommendation as a sequence of DIV blocks. Use the following structure exactly don't send any markdown symbols like ''' or # or * '''html tags in the content:
+Return ONLY the HTML code. DO NOT include any markdown code blocks (like ```html), tags at the start/end of the output, or any conversational text.
+Use the following structure exactly:
 
 <div class="analysis-section mb-6">
   <h3 class="text-xl font-bold text-blue-800 border-b-2 border-blue-200 pb-2 mb-4">I. Scientific Analysis</h3>
-  <p class="text-gray-700 leading-relaxed mb-4">[Provide a brief scientific explanation of the {user_data.get('disease_detected')} and how current weather ({weather_condition}) influences it.]</p>
+  <p class="text-gray-700 leading-relaxed mb-4">[Provide a detailed scientific explanation of the {user_data.get('disease_detected')}. Explain how current weather ({weather_condition}, {weather.get('temp_c')}°C) affects the pathogen's lifecycle and spread in Pune's environment. Mention specific biological characteristics of the issue.]</p>
 </div>
 
 <div class="actions-section mb-6 bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
   <h3 class="text-xl font-bold text-red-800 mb-3">II. Immediate Rescue Actions</h3>
-  <ul class="list-disc pl-5 space-y-2">
-    <li><strong>[Action Name]:</strong> [Clear description of what to do now]</li>
-    <li><strong>[Dosage/Application]:</strong> [Mention specific organic or chemical treatment types appropriate for this disease]</li>
+  <ul class="list-disc pl-5 space-y-3">
+    <li><strong>[Action Name]:</strong> [Provide 2-3 sentences explaining a specific, high-priority physical or cultural intervention.]</li>
+    <li><strong>[Organic/Chemical Treatment]:</strong> [Recommend specific active ingredients (e.g., Propiconazole for rust, or Neem-based solutions) and explain exactly how they work against {user_data.get('disease_detected')}.]</li>
+    <li><strong>[Dosage/Application]:</strong> [Provide detailed application instructions, including optimal timing (morning/evening) and any safety precautions regarding the weather.]</li>
   </ul>
 </div>
 
 <div class="prevention-section mb-6 bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
   <h3 class="text-xl font-bold text-green-800 mb-3">III. Long-term Management Plan</h3>
-  <ul class="list-disc pl-5 space-y-2">
-    <li><strong>Soil Management:</strong> [Advice based on the provided soil type or general fertility]</li>
-    <li><strong>Strategy:</strong> [Advice on irrigation or rotation mentioned in farm details]</li>
+  <ul class="list-disc pl-5 space-y-3">
+    <li><strong>Soil & Nutrient Management:</strong> [Detailed advice on soil health, mentioning how specific nutrients or organic amendments can build crop resistance.]</li>
+    <li><strong>Climate Adaptive Strategy:</strong> [Detailed advice on irrigation timing or crop rotation specifically designed to prevent the recurrence of {user_data.get('disease_detected')} in future seasons.]</li>
   </ul>
 </div>
 
 INSTRUCTIONS:
 - Use professional yet accessible language.
-- give detailed recommendations that are actionable and specific to the farmer's context.
-- Avoid generic advice; tailor it to the disease, weather, and farm parameters provided.
-- Ensure the HTML is valid.
-- DO NOT use markdown symbols like # or * within the code.
+- provide substantial, actionable details for each point while keeping the total length concise (around 300-400 words).
+- Avoid generic advice; tailor every sentence to the disease, weather, and farm parameters provided.
+- Ensure the HTML is valid and all tags are properly closed.
+- DO NOT use any markdown symbols like #, *, or backticks anywhere in your response.
 """
 
     for attempt in range(3):
@@ -137,6 +139,17 @@ INSTRUCTIONS:
             )
 
             text = response.choices[0].message.content
+
+            # Clean up the output if the LLM still insists on markdown wrappers
+            if text.startswith("```"):
+                # Remove the first line if it contains "```html" or "```"
+                lines = text.splitlines()
+                if lines and lines[0].startswith("```"):
+                    lines = lines[1:]
+                # Remove the last line if it's "```"
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                text = "\n".join(lines).strip()
 
             if text.strip():
                 return {"status": "success", "recommendation": text.strip()}
