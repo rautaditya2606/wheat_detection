@@ -22,29 +22,50 @@ This demonstrates end-to-end engineering across ML inference, backend architectu
 
 ## Architecture
 ```mermaid
-graph TD
-    User([User's Browser]) -->|Parallel Upload| Backend
-    User -->|Location + Data| Backend
+graph TB
+    %% Enhanced Style Definitions
+    classDef userNode fill:#0ea5e9,stroke:#0284c7,stroke-width:1px,color:#fff,rx:10,ry:10;
+    classDef backendNode fill:#f59e0b,stroke:#d97706,stroke-width:1px,color:#fff,rx:5,ry:5;
+    classDef storageNode fill:#8b5cf6,stroke:#7c3aed,stroke-width:1px,color:#fff,rx:5,ry:5;
+    classDef intelligenceNode fill:#10b981,stroke:#059669,stroke-width:1px,color:#fff,rx:5,ry:5;
+    classDef sseNode fill:#ef4444,stroke:#dc2626,stroke-width:1px,color:#fff,rx:10,ry:10;
+
+    %% Nodes
+    User([fa:fa-user User Browser]):::userNode
     
-    subgraph "Flask Backend (backend/app.py)"
-    Backend{Flask Server}
-    Backend -->|1. Queue| Worker[Async Background Worker]
-    Worker -->|2. Lock| ResNet[Sequential ResNet50 Engine]
-    Worker -->|3. Overlay| OpenCV[Heuristic Highlight Engine]
-    Worker -->|4. Stream| SSE[Server-Sent Events]
+    subgraph "Compute & Orchestration"
+        Backend{Flask Entrypoint}:::backendNode
+        Worker[[Async Worker]]:::backendNode
+        ResNet(ResNet50 Engine):::backendNode
+        OpenCV(OpenCV Highlight):::backendNode
     end
-    
-    subgraph "External Storage and Validation"
-    Worker --> Cloudinary[Cloudinary Storage]
-    Worker --> CLIP[Hugging Face CLIP Space]
+
+    subgraph "Validation & Assets"
+        Cloudinary[(Cloudinary)]:::storageNode
+        CLIP{HF CLIP}:::storageNode
     end
-    
-    subgraph "Intelligence and Persistence"
-    Worker --> LLM[OpenAI GPT-3.5]
-    Worker --> ClickHouse[Aiven ClickHouse]
+
+    subgraph "Persistence & Intelligence"
+        LLM(GPT-3.5):::intelligenceNode
+        ClickHouse[(Aiven ClickHouse)]:::intelligenceNode
     end
-    
-    SSE -->|Real-time| Response[Reactive UI Grid]
+
+    Response[[Reactive UI Grid]]:::sseNode
+
+    %% Styled Connections
+    User ==>|Upload + Metadata| Backend
+    Backend -.->|Queue Task| Worker
+    Worker --> ResNet
+    Worker --> OpenCV
+    Worker --> Cloudinary
+    Worker --> CLIP
+    Worker --> LLM
+    Worker --> ClickHouse
+    Worker -.->|SSE Stream| SSE[Server-Sent Events]:::sseNode
+    SSE ==>|Real-time Updates| Response
+
+    %% Global Link Styling
+    linkStyle default stroke:#64748b,stroke-width:1px,transition:0.3s;
 ```
 
 ### Flow Logic
