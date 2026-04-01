@@ -19,21 +19,21 @@
               <p class="text-green-100 text-sm md:text-base">Upload an image of wheat crop or leaves to detect diseases</p>
             </div>
             <nav>
-              <ul class="flex items-center space-x-4">
+              <ul class="flex items-center space-x-2 md:space-x-4">
                 <li>
-                  <a href="{{ url_for('index') }}" class="hover:text-green-200 transition-colors">Home</a>
+                  <a href="{{ url_for('index') }}" class="hover:text-green-200 transition-colors text-xs md:text-sm lg:text-base">Home</a>
                 </li>
                 {% if current_user.is_authenticated %}
                   <li>
-                    <a href="{{ url_for('questionnaire') }}" class="hover:text-green-200 transition-colors">Personalized Analysis</a>
+                    <a href="{{ url_for('questionnaire') }}" class="hover:text-green-200 transition-colors text-xs md:text-sm lg:text-base hidden sm:inline">Personalized Analysis</a>
                   </li>
                   <li class="relative" id="userProfileMenu">
-                    <button type="button" class="inline-flex items-center space-x-2 bg-green-800/70 hover:bg-green-900 px-3 py-1.5 rounded-lg transition-all duration-200 border border-white/25 shadow-sm group focus:outline-none focus:ring-2 focus:ring-green-200 focus:ring-offset-2 focus:ring-offset-green-700" id="userMenuButton" aria-expanded="false" aria-haspopup="true" aria-controls="userDropdown">
-                      <div class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-green-700 font-bold text-sm border border-green-200 shadow-inner group-hover:scale-105 transition-transform">
+                    <button type="button" class="inline-flex items-center space-x-1 md:space-x-2 bg-green-800/70 hover:bg-green-900 px-2 md:px-3 py-1 md:py-1.5 rounded-lg transition-all duration-200 border border-white/25 shadow-sm group focus:outline-none focus:ring-2 focus:ring-green-200 focus:ring-offset-2 focus:ring-offset-green-700" id="userMenuButton" aria-expanded="false" aria-haspopup="true" aria-controls="userDropdown">
+                      <div class="w-6 h-6 md:w-8 md:h-8 rounded-full bg-white flex items-center justify-center text-green-700 font-bold text-xs md:text-sm border border-green-200 shadow-inner group-hover:scale-105 transition-transform">
                         {{ current_user.username[0] | upper }}
                       </div>
-                      <span class="max-w-[100px] truncate text-sm font-semibold text-green-50">{{ current_user.username }}</span>
-                      <i class="fas fa-chevron-down text-xs text-green-200 group-hover:text-white transition-transform duration-200" id="dropdownArrow"></i>
+                      <span class="max-w-[0px] sm:max-w-[100px] hidden sm:block truncate text-xs md:text-sm font-semibold text-green-50">{{ current_user.username }}</span>
+                      <i class="fas fa-chevron-down text-[10px] md:text-xs text-green-200 group-hover:text-white transition-transform duration-200" id="dropdownArrow"></i>
                     </button>
                     
                     <!-- Dropdown Menu -->

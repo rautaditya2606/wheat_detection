@@ -5,21 +5,32 @@
     <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
       <div class="md:flex">
         <!-- Image Section -->
-        <div class="md:w-1/2 bg-gray-100 relative min-h-[300px] md:min-h-[400px]">
-          {% if cloudinary_url %}
-            <img src="{{ cloudinary_url }}" alt="Analyzed wheat crop" class="md:absolute md:inset-0 w-full h-full object-contain md:object-cover" />
-          {% elif image_path %}
-            <img src="{{ image_path }}" alt="Analyzed wheat crop" class="md:absolute md:inset-0 w-full h-full object-contain md:object-cover" />
-          {% else %}
-            <div class="flex items-center justify-center h-full text-gray-400 py-20">
-              <svg class="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
+        <div class="md:w-1/2 bg-gray-100 flex flex-col gap-4 p-4">
+          <div class="relative flex-1 min-h-[300px]">
+            {% if cloudinary_url %}
+              <img onclick="openImageModal('{{ cloudinary_url }}')" src="{{ cloudinary_url }}" alt="Analyzed wheat crop" class="cursor-zoom-in md:absolute md:inset-0 w-full h-full object-contain md:object-cover rounded-lg shadow-sm" />
+            {% elif image_path %}
+              <img onclick="openImageModal('{{ image_path }}')" src="{{ image_path }}" alt="Analyzed wheat crop" class="cursor-zoom-in md:absolute md:inset-0 w-full h-full object-contain md:object-cover rounded-lg shadow-sm" />
+            {% else %}
+              <div class="flex items-center justify-center h-full text-gray-400 py-20">
+                <svg class="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+              </div>
+            {% endif %}
+            <div class="absolute top-2 left-2 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-md shadow-sm">
+              <p class="text-xs font-medium text-gray-600">Original Image</p>
             </div>
-          {% endif %}
-          <div class="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-sm">
-            <p class="text-sm font-medium text-gray-600">Analysis Result</p>
           </div>
+
+          {% if highlighted_path %}
+          <div class="relative flex-1 min-h-[300px]">
+            <img src="{{ highlighted_path }}" alt="Detection Overlay" class="md:absolute md:inset-0 w-full h-full object-contain md:object-cover rounded-lg shadow-sm" />
+            <div class="absolute top-2 left-2 bg-indigo-600/90 backdrop-blur-sm px-3 py-1 rounded-md shadow-sm">
+              <p class="text-xs font-medium text-white">Detection Overlay</p>
+            </div>
+          </div>
+          {% endif %}
         </div>
 
         <!-- Content Section -->

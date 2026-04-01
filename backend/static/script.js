@@ -5,34 +5,37 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (fileInput && fileUploadArea) {
         fileInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+
+            // Clear old previews when a new selection is made
+            fileUploadArea.querySelectorAll('.preview-item').forEach(el => el.remove());
+
+            files.forEach((file) => {
                 const reader = new FileReader();
-                
-                reader.onload = function(e) {
+
+                reader.onload = function(ev) {
                     const preview = document.createElement('div');
-                    preview.className = 'relative inline-block';
+                    preview.className = 'preview-item relative inline-block m-1';
+
                     preview.innerHTML = `
                         <div class="relative group">
-                            <img src="${e.target.result}" class="h-32 w-32 object-cover rounded-lg" alt="Preview">
-                            <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity" onclick="this.parentElement.parentElement.remove(); fileInput.value = '';">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                </svg>
-                            </button>
+                            <img src="${ev.target.result}" class="h-32 w-32 object-cover rounded-lg" alt="Preview">
+                            <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">×</button>
                         </div>
                     `;
-                    
-                    const existingPreview = fileUploadArea.querySelector('.relative.inline-block');
-                    if (existingPreview) {
-                        existingPreview.remove();
-                    }
-                    
+
+                    // Remove only this preview
+                    preview.querySelector('button').onclick = () => preview.remove();
+
+                    // Click to enlarge
+                    preview.querySelector('img').onclick = () => openImageModal(ev.target.result);
+
                     fileUploadArea.appendChild(preview);
                 };
-                
+
                 reader.readAsDataURL(file);
-            }
+            });
         });
         
         // Drag and drop functionality
@@ -71,6 +74,31 @@ document.addEventListener('DOMContentLoaded', function() {
             const event = new Event('change');
             fileInput.dispatchEvent(event);
         }
+    }
+
+    // Simple image modal (shared)
+    function openImageModal(src) {
+        let modal = document.getElementById('image-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'image-modal';
+            modal.className = 'fixed inset-0 bg-black/80 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="relative max-w-4xl w-full p-4">
+                    <img id="modal-img" class="w-full max-h-[80vh] object-contain rounded-lg" />
+                    <button id="modal-close" class="absolute top-2 right-2 bg-white text-black rounded-full px-3 py-1">×</button>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            modal.addEventListener('click', (e) => {
+                if (e.target.id === 'image-modal' || e.target.id === 'modal-close') {
+                    modal.remove();
+                }
+            });
+        }
+
+        modal.querySelector('#modal-img').src = src;
     }
     
     // Show alert function

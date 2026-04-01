@@ -43,18 +43,98 @@ body {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-    .result-container {
-        flex-direction: column;
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
-    
-    .result-image, .result-details {
-        width: 100%;
-        padding: 0;
+
+    header h1 {
+        font-size: 1.5rem !important;
+        line-height: 1.2;
     }
-    
-    .result-image {
-        margin-bottom: 1.5rem;
+
+    nav ul {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+        space-x-0: !important;
     }
+
+    nav ul li {
+        margin: 0 !important;
+    }
+
+    .max-w-3xl {
+        padding: 1.5rem !important;
+        margin-left: 0.5rem;
+        margin-right: 0.5rem;
+    }
+
+    .file-upload-area {
+        padding: 1.5rem !important;
+    }
+
+    .upload-text {
+        font-size: 0.875rem;
+        text-align: center;
+    }
+
+    /* Grid adjustments for mobile */
+    #resultsGrid {
+        grid-template-cols: repeat(auto-fill, minmax(140px, 1fr)) !important;
+        gap: 0.75rem !important;
+    }
+
+    .result-card-inner {
+        padding: 0.75rem !important;
+    }
+
+    .result-card-inner img {
+        height: 100px !important;
+    }
+
+    .result-card-inner h4 {
+        font-size: 0.9rem !important;
+    }
+
+    .result-card-inner p {
+        font-size: 0.75rem !important;
+    }
+
+    /* Better button sizing on mobile */
+    #submitBtn {
+        padding: 1rem !important;
+        font-size: 1.1rem;
+    }
+
+    /* User Profile Menu on Mobile */
+    #userProfileMenu button {
+        padding: 0.25rem 0.5rem !important;
+    }
+
+    #userProfileMenu span {
+        display: none; /* Hide username on small screens to save space */
+    }
+}
+
+/* Base style improvements for all screens */
+.container {
+    max-width: 1200px;
+}
+
+.max-w-3xl {
+    width: 100%;
+}
+
+/* Ensure images don't overflow */
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Result card specific styling for better grid look */
+#resultsGrid > div {
+    height: 100%;
 }
 
 /* Custom scrollbar */
