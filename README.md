@@ -10,66 +10,62 @@
 
 Most crop-disease demos stop at a class label. This system goes further:
 
-2. Detects disease from image using a quantized ResNet50 model (89% accuracy, 15 classes)
-3. Collects field context — questionnaire, real-time weather, geolocation
-4. Generates practical treatment guidance using an LLM
-5. Captures user feedback and stores labeled images for a future retraining pipeline
+1. **Async Bulk Diagnostics**: Upload up to 10 images in parallel. To ensure memory stability on low-resource environments, inference is serialized via a `threading.Lock` while results are streamed back in real-time via Server-Sent Events (SSE).
+2. **Heuristic Region Overlays**: Automatically generates visual disease highlighting using OpenCV-based color and texture analysis (e.g., reddish-brown rust pustules) to ground the model's prediction in visual evidence.
+3. **Collective AI Recommendation**: Aggregates results from multiple field samples + real-time weather + geolocation to provide a "Global Field Health" summary using OpenAI GPT orchestration.
+4. **Quantized Edge Inference**: Uses an INT8 quantized ResNet50 model (89% accuracy) optimized for 75% smaller footprint and faster CPU cold-starts.
+5. **Human-in-the-Loop Feedback**: Captures user-corrected labels and stores them in Aiven ClickHouse, creating a verifiable ground-truth dataset for future active learning cycles.
 
 This demonstrates end-to-end engineering across ML inference, backend architecture, cloud storage, managed database integration, and product UX — not just a notebook experiment.
 
 ---
 
 ## Architecture
-
 ```mermaid
 graph TD
-    User([User's Browser]) -->|Upload Image| Backend
+    User([User's Browser]) -->|Parallel Upload| Backend
     User -->|Location + Data| Backend
     
     subgraph "Flask Backend (backend/app.py)"
     Backend{Flask Server}
-    Backend -->|1. Upload| Cloudinary[Cloudinary Storage]
-    Backend -->|2. Validate URL| CLIP[Hugging Face CLIP Space]
-    Backend -->|3a. Rejection| Purge[Purge Cloudinary ID]
-    Backend -->|3b. Approval| ResNet[ResNet50 ONNX Engine]
-    ResNet -->|4. Log| ClickHouse[Aiven ClickHouse]
+    Backend -->|1. Queue| Worker[Async Background Worker]
+    Worker -->|2. Lock| ResNet[Sequential ResNet50 Engine]
+    Worker -->|3. Overlay| OpenCV[Heuristic Highlight Engine]
+    Worker -->|4. Stream| SSE[Server-Sent Events]
     end
     
-    subgraph "External Context"
-    Backend --- Weather[OpenWeather API]
-    Backend --- LLM[OpenAI GPT-3.5]
+    subgraph "External Storage and Validation"
+    Worker --> Cloudinary[Cloudinary Storage]
+    Worker --> CLIP[Hugging Face CLIP Space]
     end
     
-    Backend -->|Result| Response[UI Response]
-    
-    subgraph "Admin Controls"
-    Admin([Security Admin]) -->|Audit/Delete| Dash[Dashboard]
-    Dash --> ClickHouse
-    Dash --> Cloudinary
+    subgraph "Intelligence and Persistence"
+    Worker --> LLM[OpenAI GPT-3.5]
+    Worker --> ClickHouse[Aiven ClickHouse]
     end
+    
+    SSE -->|Real-time| Response[Reactive UI Grid]
 ```
 
 ### Flow Logic
-1. **Cloud-First Validation**: Every upload hits Cloudinary first to generate a persistent URL for downstream microservices.
-2. **CLIP Gatekeeper**: The Hugging Face microservice analyzes the URL. If the "Wheat Score" is below the threshold, the backend immediately calls `destroy()` on the Cloudinary image to minimize storage footprint.
-3. **ResNet50 Inference**: Only validated wheat photos reach the classification model.
-4. **Data Integrity**: Predictions are stored in Aiven ClickHouse for high-speed retrieval of historical disease patterns.
-
+1. **Parallel Ingestion**: Multiple images are uploaded simultaneously to the server.
+2. **Sequential Inference**: To prevent memory overflow, a `threading.Lock` ensures only one image hits the ONNX model at a time.
+3. **Real-time Streaming**: Results (labels, confidence, and highlighted overlay URLs) are "pushed" to the frontend as they finish, allowing users to see the first result immediately while others process.
+4. **Visual Diagnosis**: OpenCV analyzes the specific color signatures (like the reddish-brown of Rust) to draw contours around infected zones.
+5. **CLIP Gatekeeper**: The Hugging Face microservice validates that the image contains wheat before full processing.
 
 ---
 
 ## Core Features
 
-- **Multi-Stage AI Validation (CLIP Gatekeeper)** — Uses a specialized CLIP microservice to validate images before processing. If an image is not a wheat crop, it is automatically rejected and purged from storage to save costs and maintain data quality.
-- **Microservice Architecture** — Decoupled CLIP validation hosted on Hugging Face Spaces for efficient resource management.
-- **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 accuracy across 15 wheat disease classes
-- **INT8 Quantization** — Model size reduced from 90MB to 22.6MB (75% reduction), faster cold-starts on CPU deployment
-- **Human-in-the-Loop Feedback** — Users confirm or correct predictions; labeled images stored for future retraining
-- **Admin Monitoring Dashboard** — Secure `/admin` interface for auditing predictions, monitoring system health, and manual data purging.
-- **Cloud-Native Persistence** — Seamless integration with Cloudinary for asset management and Aiven ClickHouse for high-performance telemetry storage.
-- **Context-Aware Recommendations** — Real-time weather + geolocation fed to GPT-3.5-Turbo for field-specific guidance
-- **PDF Report Export** — Downloadable diagnostic report with image, prediction, and treatment plan
-- **Responsive UI** — Mobile-first design with Tailwind CSS for field access
+- **Async Bulk Upload & Streaming** — Process up to 10 field samples simultaneously. Images upload in parallel, while inference is serialized via `threading.Lock` to prevent memory overflow. Uses SSE (Server-Sent Events) for real-time UI updates.
+- **Heuristic Disease Highlighting** — Visual overlays for 15+ diseases. Uses OpenCV color-masking and edge detection to show the user exactly where the model's prediction aligns with visual symptoms.
+- **Mobile-Perfect Responsiveness** — Optimized Tailwind UI with adaptive grids (2-column mobile, 4-column desktop) and touch-optimized navigation for field use.
+- **Multi-Stage AI Validation (CLIP Gatekeeper)** — Uses a specialized CLIP microservice to validate image content before full processing. Non-wheat images are automatically rejected and purged from storage.
+- **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 accuracy across 15 wheat disease classes.
+- **INT8 Quantization** — Model size reduced from 90MB to 22.6MB (75% reduction), faster cold-starts on CPU deployment.
+- **Context-Aware Recommendations** — Aggregates bulk results + weather + geolocation into a GPT-3.5-Turbo prompt for field-specific guidance.
+- **Admin Monitoring Dashboard** — Secure `/admin` interface for auditing predictions and monitoring system health.
 
 ---
 
