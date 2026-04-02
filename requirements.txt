@@ -9,9 +9,10 @@ email-validator==2.1.0
 # ASGI Server
 uvicorn==0.27.0
 asgiref==3.10.0
-gevent>=24.2.1
+eventlet>=0.36.1
 
 # Machine Learning
+pandas>=2.0.0
 onnxruntime>=1.16.0
 opencv-python-headless>=4.8.0
 Pillow>=10.4.0

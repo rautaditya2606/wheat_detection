@@ -1,3 +1,5 @@
+import eventlet
+eventlet.monkey_patch()  # Patch globally before other imports
 import os
 import sys
 
