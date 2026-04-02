@@ -26,14 +26,24 @@
         </svg>
         <p class="upload-text text-gray-600 mb-4">Drag & drop images here or click to select</p>
         <div class="relative">
-          <input type="file" name="file" id="file-upload" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-          <label for="file-upload" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer transition-colors">Choose Image</label>
+          <input type="file" name="file" id="file-upload" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+          <label for="file-upload" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer transition-colors">Choose Images</label>
         </div>
         <p id="fileName" class="mt-2 text-sm text-gray-500">No files chosen</p>
       </div>
 
-      <button type="submit" id="submitBtn" class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors">Analyze Image</button>
+      <button type="submit" id="submitBtn" class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors">Analyze Images</button>
     </form>
+
+    <div id="bulkResultsContainer" class="mt-8 hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-semibold text-gray-800">Bulk Analysis Results</h3>
+        <span id="bulkSummary" class="text-xs text-gray-500"></span>
+      </div>
+      <p class="mb-3 text-xs text-gray-500">For AI recommendation, open any result and click <strong>Get Expert Recommendations</strong>.</p>
+      <div id="resultsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+    </div>
 
     <!-- Sample Images Section -->
     <div class="mt-10 border-t border-gray-100 pt-8">
@@ -141,6 +151,9 @@
       const uploadForm = document.getElementById('uploadForm')
       const analyzeBtn = document.getElementById('submitBtn')
       const fileNameDisplay = document.getElementById('fileName')
+      const bulkResultsContainer = document.getElementById('bulkResultsContainer')
+      const resultsGrid = document.getElementById('resultsGrid')
+      const bulkSummary = document.getElementById('bulkSummary')
     
       if (!uploadForm || !analyzeBtn || !fileInput) {
         console.error('Required form elements not found')
@@ -150,7 +163,7 @@
       // Update file name display
       fileInput.addEventListener('change', function (e) {
         const files = e.target.files
-        const fileName = files[0] ? files[0].name : 'No file chosen'
+        const fileName = files.length > 1 ? `${files.length} files selected` : (files[0] ? files[0].name : 'No file chosen')
         fileNameDisplay.textContent = fileName
         updateButtonState(files.length > 0)
       })
@@ -159,20 +172,51 @@
       uploadForm.addEventListener('submit', async function (e) {
         e.preventDefault()
     
-        const file = fileInput.files[0]
-        if (!file) {
-          showAlert('Please select one image to analyze', 'error')
+        const files = Array.from(fileInput.files)
+        if (!files.length) {
+          showAlert('Please select at least one image to analyze', 'error')
           return false
         }
+        if (files.length > 10) {
+          showAlert('You can upload up to 10 images at once', 'error')
+          return false
+        }
+
         const originalText = analyzeBtn.innerHTML
+
         try {
           analyzeBtn.disabled = true
           analyzeBtn.innerHTML = 'Analyzing... <i class="fas fa-spinner fa-spin ml-2"></i>'
 
-          const formData = new FormData()
-          formData.append('file', file)
+          if (files.length === 1) {
+            const formData = new FormData()
+            formData.append('file', files[0])
 
-          const response = await fetch('/predict', {
+            const response = await fetch('/predict', {
+              method: 'POST',
+              body: formData
+            })
+
+            const contentType = response.headers.get('content-type') || ''
+            const data = contentType.includes('application/json')
+              ? await response.json()
+              : { error: await response.text() }
+
+            if (!response.ok) {
+              showAlert((data.error && String(data.error).slice(0, 180)) || 'Failed to analyze image', 'error')
+              return
+            }
+
+            if (data.redirect_url) {
+              window.location.href = data.redirect_url
+            }
+            return
+          }
+
+          const formData = new FormData()
+          files.forEach((file) => formData.append('files', file))
+
+          const response = await fetch('/predict-bulk', {
             method: 'POST',
             body: formData
           })
@@ -182,22 +226,71 @@
             ? await response.json()
             : { error: await response.text() }
 
-          if (!response.ok) {
-            showAlert((data.error && String(data.error).slice(0, 180)) || 'Failed to analyze image', 'error')
+          if (!response.ok || !data.success) {
+            showAlert((data.error && String(data.error).slice(0, 180)) || 'Bulk analysis failed', 'error')
             return
           }
 
-          if (data.redirect_url) {
-            window.location.href = data.redirect_url
-          }
+          renderBulkResults(data)
         } catch (err) {
           console.error('Error:', err)
-          showAlert('Failed to analyze image. Please try again.', 'error')
+          showAlert('Failed to analyze images. Please try again.', 'error')
         } finally {
           analyzeBtn.disabled = false
           analyzeBtn.innerHTML = originalText
         }
       })
+
+      function renderBulkResults(data) {
+        bulkResultsContainer.classList.remove('hidden')
+        resultsGrid.innerHTML = ''
+
+        const summary = data.summary || {}
+        bulkSummary.textContent = `Total: ${summary.total || 0} | Completed: ${summary.completed || 0} | Rejected: ${summary.rejected || 0} | Failed: ${summary.failed || 0}`
+
+        ;(data.results || []).forEach((item) => {
+          const card = document.createElement('div')
+          card.className = 'rounded-xl border bg-white overflow-hidden shadow-sm'
+
+          const previewUrl = item.highlighted_url || item.cloudinary_url || ''
+          const detailsUrl = item.feedback_id
+            ? `/result?feedback_id=${item.feedback_id}&label=${encodeURIComponent(item.label || 'Unknown')}&confidence=${encodeURIComponent(item.confidence || 'N/A')}&highlighted_url=${encodeURIComponent(item.highlighted_url || '')}&cloudinary_url=${encodeURIComponent(item.cloudinary_url || '')}`
+            : '#'
+
+          if (item.status === 'completed') {
+            card.innerHTML = `
+              <a href="${previewUrl}" target="_blank" class="block bg-gray-100">
+                <img src="${previewUrl}" class="w-full h-44 object-cover" alt="${item.file_name || 'Image'}">
+              </a>
+              <div class="p-3">
+                <div class="text-xs text-gray-500 mb-1 truncate">${item.file_name || ''}</div>
+                <div class="font-semibold text-gray-800">${item.label || 'Unknown'}</div>
+                <div class="text-xs text-gray-500">Confidence: ${item.confidence || 'N/A'}</div>
+                <a href="${detailsUrl}" target="_blank" class="mt-2 inline-block text-xs text-indigo-600 hover:underline">View Full Details</a>
+              </div>
+            `
+          } else if (item.status === 'rejected') {
+            card.innerHTML = `
+              <div class="p-4 bg-yellow-50 border-l-4 border-yellow-400 h-full">
+                <div class="text-xs text-gray-500 mb-1 truncate">${item.file_name || ''}</div>
+                <div class="font-semibold text-yellow-800">Rejected by CLIP</div>
+                <div class="text-xs text-yellow-700 mt-1">${item.error || 'Not a wheat image'}</div>
+              </div>
+            `
+          } else {
+            card.innerHTML = `
+              <div class="p-4 bg-red-50 border-l-4 border-red-400 h-full">
+                <div class="text-xs text-gray-500 mb-1 truncate">${item.file_name || ''}</div>
+                <div class="font-semibold text-red-700">Processing Failed</div>
+                <div class="text-xs text-red-600 mt-1">${item.error || 'Unknown error'}</div>
+              </div>
+            `
+          }
+
+          resultsGrid.appendChild(card)
+        })
+
+      }
 
       // Initial cleanup of old single-predict logic wrapper
       function updateButtonState(isEnabled) {

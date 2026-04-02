@@ -684,6 +684,155 @@ def predict():
         return jsonify({"error": "An unexpected error occurred"}), 500
 
 
+@app.route("/predict-bulk", methods=["POST"])
+def predict_bulk():
+    try:
+        files = request.files.getlist("files")
+        if not files and "file" in request.files:
+            files = [request.files["file"]]
+
+        if not files:
+            return jsonify({"error": "No files uploaded"}), 400
+        if len(files) > 10:
+            return jsonify({"error": "You can upload up to 10 images at once."}), 400
+
+        allowed_extensions = {"png", "jpg", "jpeg"}
+        results = []
+
+        for idx, file in enumerate(files):
+            file_name = file.filename or f"image_{idx + 1}"
+            item = {
+                "file_name": file_name,
+                "status": "failed",
+                "label": None,
+                "confidence": None,
+                "cloudinary_url": None,
+                "highlighted_url": None,
+                "feedback_id": None,
+                "error": None,
+            }
+
+            try:
+                if file.filename == "":
+                    item["error"] = "Empty filename"
+                    results.append(item)
+                    continue
+
+                if (
+                    "." not in file.filename
+                    or file.filename.rsplit(".", 1)[1].lower() not in allowed_extensions
+                ):
+                    item["error"] = "Invalid file type"
+                    results.append(item)
+                    continue
+
+                safe_name = secure_filename(file.filename)
+                save_name = f"bulk_{uuid.uuid4().hex[:10]}_{safe_name}"
+                filepath = os.path.join(app.config["UPLOAD_FOLDER"], save_name)
+                file.save(filepath)
+
+                try:
+                    upload_result = cloudinary.uploader.upload(
+                        filepath, folder="wheat_disease"
+                    )
+                    cloudinary_url = upload_result.get("secure_url")
+                    public_id = upload_result.get("public_id")
+                    item["cloudinary_url"] = cloudinary_url
+                except Exception as ce:
+                    item["error"] = f"Cloud upload failed: {str(ce)}"
+                    results.append(item)
+                    continue
+
+                try:
+                    val_response = requests.post(
+                        CLIP_VERIFY_URL.rstrip("/"),
+                        json={"image_url": cloudinary_url},
+                        timeout=45,
+                    )
+                    if val_response.status_code == 200:
+                        val_data = val_response.json()
+                        if not val_data.get("is_valid", True):
+                            wheat_score = val_data.get("wheat_score", 0.0)
+                            item["status"] = "rejected"
+                            item["error"] = (
+                                f"Not a wheat image (confidence: {wheat_score * 100:.2f}%)"
+                            )
+                            if public_id:
+                                try:
+                                    cloudinary.uploader.destroy(public_id)
+                                except Exception:
+                                    pass
+                            results.append(item)
+                            continue
+                except Exception as ve:
+                    app.logger.error(f"Bulk CLIP validation failed: {str(ve)}")
+
+                image = Image.open(filepath).convert("RGB")
+                input_data = preprocess_image(image)
+                with model_lock:
+                    ort_inputs = {ort_session.get_inputs()[0].name: input_data}
+                    ort_outs = ort_session.run(None, ort_inputs)
+
+                outputs = ort_outs[0]
+                flat_logits = outputs.flatten()
+                exp_outputs = np.exp(flat_logits - np.max(flat_logits))
+                probabilities = exp_outputs / np.sum(exp_outputs)
+                predicted_class = int(np.argmax(probabilities))
+                predicted_label = CLASS_NAMES.get(predicted_class, "Unknown")
+                confidence_score = float(np.max(probabilities))
+
+                highlighted_url = None
+                if predicted_label != "Healthy":
+                    highlighted_filename = f"highlighted_{save_name}"
+                    highlighted_path = os.path.join(
+                        app.config["UPLOAD_FOLDER"], highlighted_filename
+                    )
+                    if highlight_infection(filepath, predicted_label, highlighted_path):
+                        highlighted_url = f"/uploads/{highlighted_filename}"
+
+                new_feedback = Feedback(
+                    image_url=cloudinary_url,
+                    predicted_class=predicted_label,
+                    confidence=float(confidence_score * 100),
+                    is_correct=True,
+                )
+                db.session.add(new_feedback)
+                db.session.commit()
+
+                item["status"] = "completed"
+                item["label"] = predicted_label
+                item["confidence"] = f"{confidence_score * 100:.2f}%"
+                item["highlighted_url"] = highlighted_url
+                item["feedback_id"] = new_feedback.id
+                results.append(item)
+
+            except Exception as item_err:
+                app.logger.error(f"Bulk item error for {file_name}: {str(item_err)}")
+                item["error"] = str(item_err)
+                results.append(item)
+
+        completed = [r for r in results if r.get("status") == "completed"]
+        rejected = [r for r in results if r.get("status") == "rejected"]
+        failed = [r for r in results if r.get("status") == "failed"]
+
+        return jsonify(
+            {
+                "success": True,
+                "results": results,
+                "summary": {
+                    "total": len(results),
+                    "completed": len(completed),
+                    "rejected": len(rejected),
+                    "failed": len(failed),
+                },
+            }
+        )
+
+    except Exception as e:
+        app.logger.error(f"Error in predict_bulk: {str(e)}", exc_info=True)
+        return jsonify({"error": "Failed to process bulk upload"}), 500
+
+
 @app.route("/update-location", methods=["POST"])
 @login_required
 def update_location():
