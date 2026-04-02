@@ -342,15 +342,31 @@ def result():
             feedback = None
 
         # PRIORITY: URL params (most reliable for bulk)
-        label = label_param if label_param else (feedback.predicted_class if feedback else "Unknown")
-        confidence = confidence_param if confidence_param else (f"{feedback.confidence*100:.2f}%" if feedback and feedback.confidence else "N/A")
+        label = (
+            label_param
+            if label_param
+            else (feedback.predicted_class if feedback else "Unknown")
+        )
+        confidence = (
+            confidence_param
+            if confidence_param
+            else (
+                f"{feedback.confidence * 100:.2f}%"
+                if feedback and feedback.confidence
+                else "N/A"
+            )
+        )
 
         # Image Logic for Bulk
-        cloudinary_url = request.args.get("cloudinary_url") or (feedback.image_url if feedback else "")
+        cloudinary_url = request.args.get("cloudinary_url") or (
+            feedback.image_url if feedback else ""
+        )
         highlighted_path = request.args.get("highlighted_url") or ""
-        image_path = cloudinary_url # Fallback for template
-        
-        weather_data = get_current_user_weather() if current_user.is_authenticated else {}
+        image_path = cloudinary_url  # Fallback for template
+
+        weather_data = (
+            get_current_user_weather() if current_user.is_authenticated else {}
+        )
         cloudinary_error = None
     else:
         # 2) Session fallback (single upload flow)
@@ -703,20 +719,31 @@ def bulk_predict():
             cloudinary_url = upload_result.get("secure_url")
         except Exception as ce:
             app.logger.error(f"Cloudinary upload failed for upload: {str(ce)}")
-            return jsonify({"error": "Upload failed", "image_id": image_id}), 500
+            if batch_id not in batch_results:
+                batch_results[batch_id] = {}
+            batch_results[batch_id][image_id] = {
+                "image_id": image_id,
+                "status": "failed",
+                "error": "Upload failed",
+            }
+            return jsonify(batch_results[batch_id][image_id]), 200
 
         # 2. CLIP Validation
         val_url = CLIP_VERIFY_URL.rstrip("/")
         try:
-            val_response = requests.post(val_url, json={"image_url": cloudinary_url}, timeout=45)
+            val_response = requests.post(
+                val_url, json={"image_url": cloudinary_url}, timeout=45
+            )
             if val_response.status_code == 200:
                 val_data = val_response.json()
                 if not val_data.get("is_valid", True):
-                    return jsonify({
-                        "image_id": image_id,
-                        "status": "failed",
-                        "error": f"Not a wheat image (confidence: {val_data.get('wheat_score', 0.0) * 100:.2f}%)"
-                    }), 200
+                    return jsonify(
+                        {
+                            "image_id": image_id,
+                            "status": "failed",
+                            "error": f"Not a wheat image (confidence: {val_data.get('wheat_score', 0.0) * 100:.2f}%)",
+                        }
+                    ), 200
         except Exception as e:
             app.logger.error(f"CLIP error: {str(e)}")
 
@@ -738,7 +765,9 @@ def bulk_predict():
         highlighted_url = None
         if label != "Healthy":
             highlighted_filename = f"highlighted_{os.path.basename(filepath)}"
-            highlighted_path = os.path.join(app.config["UPLOAD_FOLDER"], highlighted_filename)
+            highlighted_path = os.path.join(
+                app.config["UPLOAD_FOLDER"], highlighted_filename
+            )
             if highlight_infection(filepath, label, highlighted_path):
                 highlighted_url = f"/uploads/{highlighted_filename}"
 
@@ -762,7 +791,7 @@ def bulk_predict():
             image_url=cloudinary_url,
             predicted_class=label,
             confidence=float(confidence * 100),
-            is_correct=True
+            is_correct=True,
         )
         db.session.add(new_feedback)
         db.session.commit()
@@ -772,6 +801,15 @@ def bulk_predict():
 
     except Exception as e:
         app.logger.error(f"Bulk predict error: {str(e)}")
+        if "batch_id" in locals() and batch_id and "image_id" in locals() and image_id:
+            if batch_id not in batch_results:
+                batch_results[batch_id] = {}
+            batch_results[batch_id][image_id] = {
+                "image_id": image_id,
+                "status": "failed",
+                "error": str(e),
+            }
+            return jsonify(batch_results[batch_id][image_id]), 200
         return jsonify({"error": str(e)}), 500
 
 
