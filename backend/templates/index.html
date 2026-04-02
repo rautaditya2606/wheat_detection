@@ -177,9 +177,13 @@
             body: formData
           })
 
-          const data = await response.json()
+          const contentType = response.headers.get('content-type') || ''
+          const data = contentType.includes('application/json')
+            ? await response.json()
+            : { error: await response.text() }
+
           if (!response.ok) {
-            showAlert(data.error || 'Failed to analyze image', 'error')
+            showAlert((data.error && String(data.error).slice(0, 180)) || 'Failed to analyze image', 'error')
             return
           }
 
@@ -248,11 +252,14 @@
           })
         })
 
-        if (!response.ok) {
-          throw new Error('Failed to process sample')
-        }
+        const contentType = response.headers.get('content-type') || ''
+        const data = contentType.includes('application/json')
+          ? await response.json()
+          : { error: await response.text() }
 
-        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to process sample')
+        }
         if (data.redirect_url) {
           window.location.href = data.redirect_url
         }
