@@ -835,29 +835,41 @@ def bulk_predict():
         user_id = current_user.id if current_user.is_authenticated else None
 
         def process_upload_and_queue(fp, bid, iid, uid):
-            try:
-                upload_result = cloudinary.uploader.upload(fp, folder="wheat_disease")
-                c_url = upload_result.get("secure_url")
+            max_retries = 3
+            retry_count = 0
+            backoff_factor = 2
+            
+            while retry_count <= max_retries:
+                try:
+                    upload_result = cloudinary.uploader.upload(fp, folder="wheat_disease")
+                    c_url = upload_result.get("secure_url")
 
-                # Add to sequential processing queue
-                processing_queue.put(
-                    {
-                        "batch_id": bid,
-                        "image_id": iid,
-                        "filepath": fp,
-                        "cloudinary_url": c_url,
-                        "user_id": uid,
-                    }
-                )
-            except Exception as e:
-                app.logger.error(f"Async upload failed for {iid}: {str(e)}")
-                if bid not in batch_results:
-                    batch_results[bid] = {}
-                batch_results[bid][iid] = {
-                    "status": "failed",
-                    "error": "Upload failed",
-                    "image_id": iid,
-                }
+                    # Add to sequential processing queue
+                    processing_queue.put(
+                        {
+                            "batch_id": bid,
+                            "image_id": iid,
+                            "filepath": fp,
+                            "cloudinary_url": c_url,
+                            "user_id": uid,
+                        }
+                    )
+                    return  # Success, exit the loop
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count > max_retries:
+                        app.logger.error(f"Async upload failed for {iid} after {max_retries} retries: {str(e)}")
+                        if bid not in batch_results:
+                            batch_results[bid] = {}
+                        batch_results[bid][iid] = {
+                            "status": "failed",
+                            "error": "Upload failed after multiple attempts",
+                            "image_id": iid,
+                        }
+                    else:
+                        sleep_time = backoff_factor ** retry_count
+                        app.logger.warning(f"Retry {retry_count}/{max_retries} for {iid} after error: {str(e)}. Waiting {sleep_time}s...")
+                        time.sleep(sleep_time)
 
         executor.submit(process_upload_and_queue, filepath, batch_id, image_id, user_id)
 
