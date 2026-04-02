@@ -207,42 +207,42 @@
           resultsGrid.appendChild(card);
         });
 
-        // Start SSE Connection to listen for results as they complete
-        const eventSource = new EventSource(`/results-stream/${batchId}`);
-        
-        eventSource.onmessage = function(event) {
-          const data = JSON.parse(event.data);
-          updateResultCard(data);
-          
-          // Check if all are done (simplified check)
-          const allCompleted = document.querySelectorAll('.status-completed').length === files.length;
-          if (allCompleted) {
-            eventSource.close();
-            fetchFinalRecommendation(batchId);
-          }
-        };
-
-        // Parallel Upload Logic
-        const uploadPromises = files.map((file, index) => {
+        // Parallel Upload Logic (direct response updates - more reliable on Render)
+        const uploadPromises = files.map(async (file, index) => {
           const imageId = `img_${index}`;
           const formData = new FormData();
           formData.append('file', file);
           formData.append('batch_id', batchId);
           formData.append('image_id', imageId);
-          
-          return fetch('/bulk-predict', {
-            method: 'POST',
-            body: formData
-          }).catch(err => {
+
+          try {
+            const response = await fetch('/bulk-predict', {
+              method: 'POST',
+              body: formData
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+              updateResultCard({ image_id: imageId, status: 'failed', error: data.error || 'Upload failed' });
+              return;
+            }
+
+            updateResultCard(data);
+          } catch (err) {
             console.error(`Upload failed for ${imageId}`, err);
             updateResultCard({ image_id: imageId, status: 'failed', error: 'Upload failed' });
-          });
+          }
         });
 
-        // We don't wait for uploadPromises to finish before seeing results stream!
-        // But we disable button during upload
         analyzeBtn.disabled = true;
         analyzeBtn.innerHTML = 'Uploading Parallel... <i class="fas fa-spinner fa-spin ml-2"></i>';
+
+        await Promise.all(uploadPromises);
+
+        // All uploads resolved, fetch final recommendation and restore button
+        fetchFinalRecommendation(batchId);
+        analyzeBtn.disabled = false;
+        analyzeBtn.innerHTML = 'Analyze Images';
       });
 
       function updateResultCard(data) {
