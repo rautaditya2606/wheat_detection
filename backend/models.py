@@ -21,6 +21,7 @@ class Feedback(db.Model):
     )
     image_url = db.Column(db.String, nullable=False)
     predicted_class = db.Column(db.String, nullable=False)
+    confidence = db.Column(db.Float, nullable=True)
     correct_class = db.Column(db.String, nullable=True) # Populated if user says prediction was wrong
     is_correct = db.Column(db.Boolean, default=True)
     is_verified = db.Column(db.Boolean, default=False)  # Added for Human-in-the-Loop review

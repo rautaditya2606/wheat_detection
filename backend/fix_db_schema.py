@@ -26,6 +26,11 @@ def fix_schema():
                 print("Adding 'is_verified' column...")
                 conn.execute(text("ALTER TABLE default.feedback ADD COLUMN is_verified UInt8 DEFAULT 0"))
                 print("Success!")
+            
+            if 'confidence' not in columns:
+                print("Adding 'confidence' column...")
+                conn.execute(text("ALTER TABLE default.feedback ADD COLUMN confidence Float32 DEFAULT 0.0"))
+                print("Success!")
             else:
                 print("Columns up to date.")
                 

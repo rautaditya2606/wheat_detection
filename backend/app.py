@@ -1,5 +1,3 @@
-import eventlet
-eventlet.monkey_patch()  # Patch globally before other imports
 import os
 import sys
 
@@ -216,6 +214,7 @@ def bg_worker():
                     new_feedback = Feedback(
                         image_url=cloudinary_url, 
                         predicted_class=label, 
+                        confidence=float(confidence * 100),
                         is_correct=True
                     )
                     db.session.add(new_feedback)
@@ -471,15 +470,15 @@ def result():
     confidence_param = request.args.get("confidence")
     label_param = request.args.get("label")
 
-    if feedback_id:
+    if feedback_id or (label_param and confidence_param):
         try:
-            feedback = Feedback.query.get(feedback_id)
+            feedback = Feedback.query.get(feedback_id) if feedback_id else None
         except Exception:
             feedback = None
 
         # PRIORITY: URL params (most reliable for bulk)
-        label = label_param or (feedback.predicted_class if feedback else "Unknown")
-        confidence = confidence_param or (f"{feedback.confidence*100:.2f}%" if feedback and feedback.confidence else "N/A")
+        label = label_param if label_param else (feedback.predicted_class if feedback else "Unknown")
+        confidence = confidence_param if confidence_param else (f"{feedback.confidence*100:.2f}%" if feedback and feedback.confidence else "N/A")
 
         # Image Logic for Bulk
         cloudinary_url = request.args.get("cloudinary_url") or (feedback.image_url if feedback else "")
@@ -730,6 +729,7 @@ def predict():
                 if cloudinary_url
                 else os.path.basename(filepath),
                 predicted_class=predicted_label,
+                confidence=float(confidence_score),
                 is_correct=True,  # Default until user feedback
             )
             db.session.add(new_feedback)
