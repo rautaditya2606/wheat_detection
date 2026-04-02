@@ -26,30 +26,14 @@
         </svg>
         <p class="upload-text text-gray-600 mb-4">Drag & drop images here or click to select</p>
         <div class="relative">
-          <input type="file" name="file" id="file-upload" accept="image/*" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-          <label for="file-upload" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer transition-colors">Choose Images</label>
+          <input type="file" name="file" id="file-upload" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+          <label for="file-upload" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 cursor-pointer transition-colors">Choose Image</label>
         </div>
         <p id="fileName" class="mt-2 text-sm text-gray-500">No files chosen</p>
       </div>
 
-      <button type="submit" id="submitBtn" class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors">Analyze Images</button>
+      <button type="submit" id="submitBtn" class="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-md transition-colors">Analyze Image</button>
     </form>
-
-    <!-- Results Section for Bulk Upload -->
-    <div id="bulkResultsContainer" class="mt-8 hidden">
-      <h3 class="text-xl font-semibold text-gray-800 mb-4">Analysis Results</h3>
-      <div id="resultsGrid" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-        <!-- Results will be injected here -->
-      </div>
-      
-      <!-- Final Recommendation Placeholder -->
-      <div id="finalRecommendation" class="mt-8 p-6 bg-blue-50 border-l-4 border-blue-500 rounded-r-lg hidden">
-        <h4 class="text-lg font-bold text-blue-800 mb-2">Field AI Recommendation</h4>
-        <div id="recommendationContent" class="text-blue-700 italic">
-          Gathering insights from all images...
-        </div>
-      </div>
-    </div>
 
     <!-- Sample Images Section -->
     <div class="mt-10 border-t border-gray-100 pt-8">
@@ -157,8 +141,6 @@
       const uploadForm = document.getElementById('uploadForm')
       const analyzeBtn = document.getElementById('submitBtn')
       const fileNameDisplay = document.getElementById('fileName')
-      const resultsContainer = document.getElementById('bulkResultsContainer')
-      const resultsGrid = document.getElementById('resultsGrid')
     
       if (!uploadForm || !analyzeBtn || !fileInput) {
         console.error('Required form elements not found')
@@ -168,7 +150,7 @@
       // Update file name display
       fileInput.addEventListener('change', function (e) {
         const files = e.target.files
-        const fileName = files.length > 1 ? `${files.length} files selected` : (files[0] ? files[0].name : 'No file chosen')
+        const fileName = files[0] ? files[0].name : 'No file chosen'
         fileNameDisplay.textContent = fileName
         updateButtonState(files.length > 0)
       })
@@ -177,121 +159,41 @@
       uploadForm.addEventListener('submit', async function (e) {
         e.preventDefault()
     
-        const files = Array.from(fileInput.files)
-        if (files.length === 0) {
-          showAlert('Please select at least one image to analyze', 'error')
+        const file = fileInput.files[0]
+        if (!file) {
+          showAlert('Please select one image to analyze', 'error')
           return false
         }
-
-        // Generate a Batch ID for this session
-        const batchId = 'batch_' + Math.random().toString(36).substr(2, 9);
-        
-        // Show the results container and clear it
-        resultsContainer.classList.remove('hidden');
-        resultsGrid.innerHTML = '';
-        
-        // Create placeholders for each image immediately
-        files.forEach((file, index) => {
-          const imageId = `img_${index}`;
-          const card = document.createElement('div');
-          card.id = `card-${imageId}`;
-          card.className = "bg-white border rounded-lg overflow-hidden shadow-sm flex flex-col p-3 animate-pulse";
-          card.innerHTML = `
-            <div class="h-40 bg-gray-200 rounded mb-2"></div>
-            <div class="flex-1 space-y-2">
-              <div class="h-4 bg-gray-200 rounded w-3/4"></div>
-              <div class="h-4 bg-gray-200 rounded w-1/2"></div>
-            </div>
-            <div class="mt-2 text-xs text-gray-400 italic">Processing...</div>
-          `;
-          resultsGrid.appendChild(card);
-        });
-
-        // Parallel Upload Logic (direct response updates - more reliable on Render)
-        const uploadPromises = files.map(async (file, index) => {
-          const imageId = `img_${index}`;
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('batch_id', batchId);
-          formData.append('image_id', imageId);
-
-          try {
-            const response = await fetch('/bulk-predict', {
-              method: 'POST',
-              body: formData
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-              updateResultCard({ image_id: imageId, status: 'failed', error: data.error || 'Upload failed' });
-              return;
-            }
-
-            updateResultCard(data);
-          } catch (err) {
-            console.error(`Upload failed for ${imageId}`, err);
-            updateResultCard({ image_id: imageId, status: 'failed', error: 'Upload failed' });
-          }
-        });
-
-        analyzeBtn.disabled = true;
-        analyzeBtn.innerHTML = 'Uploading Parallel... <i class="fas fa-spinner fa-spin ml-2"></i>';
-
-        await Promise.all(uploadPromises);
-
-        // All uploads resolved, fetch final recommendation and restore button
-        fetchFinalRecommendation(batchId);
-        analyzeBtn.disabled = false;
-        analyzeBtn.innerHTML = 'Analyze Images';
-      });
-
-      function updateResultCard(data) {
-        const card = document.getElementById(`card-${data.image_id}`);
-        if (!card) return;
-
-        card.classList.remove('animate-pulse');
-        card.classList.add('status-completed');
-
-        if (data.status === 'failed') {
-          card.className = 'rounded-xl border border-red-200 bg-red-50 p-4';
-          card.innerHTML = `
-            <div class="text-red-600 text-sm font-medium">${data.error || 'Unknown error'}</div>
-          `;
-        } else {
-          card.className = 'group rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-lg transition-all duration-200 border border-gray-100';
-          card.innerHTML = `
-            <div class="relative overflow-hidden">
-              <img src="${data.highlighted_url || data.cloudinary_url}" class="h-44 w-full object-cover cursor-zoom-in group-hover:scale-105 transition-transform duration-300" onclick="openImageModal('${data.highlighted_url || data.cloudinary_url}')">
-              <div class="absolute top-2 left-2 bg-black/60 text-white px-2 py-0.5 rounded text-[10px]">${data.label}</div>
-              <div class="absolute top-2 right-2 bg-green-500 text-white px-2 py-0.5 rounded text-[10px] uppercase font-bold">Done</div>
-            </div>
-            <div class="p-3">
-              <div class="flex items-center justify-between">
-                <h4 class="font-semibold text-gray-800 text-sm">${data.label}</h4>
-                <span class="text-[11px] text-gray-500">${data.confidence}</span>
-              </div>
-              <a href="${(data.feedback_id && data.feedback_id !== 'undefined' && data.feedback_id !== 'null')
-                ? `/result?feedback_id=${data.feedback_id}&confidence=${encodeURIComponent(data.confidence)}&label=${encodeURIComponent(data.label)}&highlighted_url=${encodeURIComponent(data.highlighted_url || '')}&cloudinary_url=${encodeURIComponent(data.cloudinary_url || '')}`
-                : `/result?confidence=${encodeURIComponent(data.confidence)}&label=${encodeURIComponent(data.label)}&highlighted_url=${encodeURIComponent(data.highlighted_url || '')}&cloudinary_url=${encodeURIComponent(data.cloudinary_url || '')}`}
-                " target="_blank" class="mt-2 inline-block text-[11px] text-indigo-600 hover:underline">View Full Details →</a>
-            </div>
-          `;
-        }
-      }
-
-      async function fetchFinalRecommendation(batchId) {
-        const recSection = document.getElementById('finalRecommendation');
-        const recContent = document.getElementById('recommendationContent');
-        recSection.classList.remove('hidden');
-        
+        const originalText = analyzeBtn.innerHTML
         try {
-          const response = await fetch(`/batch-recommendation/${batchId}`);
-          const text = await response.text();
-          recContent.innerHTML = text;
-        } catch (e) {
-          recContent.innerHTML = "Error generating recommendation.";
+          analyzeBtn.disabled = true
+          analyzeBtn.innerHTML = 'Analyzing... <i class="fas fa-spinner fa-spin ml-2"></i>'
+
+          const formData = new FormData()
+          formData.append('file', file)
+
+          const response = await fetch('/predict', {
+            method: 'POST',
+            body: formData
+          })
+
+          const data = await response.json()
+          if (!response.ok) {
+            showAlert(data.error || 'Failed to analyze image', 'error')
+            return
+          }
+
+          if (data.redirect_url) {
+            window.location.href = data.redirect_url
+          }
+        } catch (err) {
+          console.error('Error:', err)
+          showAlert('Failed to analyze image. Please try again.', 'error')
+        } finally {
+          analyzeBtn.disabled = false
+          analyzeBtn.innerHTML = originalText
         }
-      }
+      })
 
       // Initial cleanup of old single-predict logic wrapper
       function updateButtonState(isEnabled) {
@@ -320,6 +222,8 @@
           setTimeout(() => alertDiv.remove(), 300)
         }, 5000)
       }
+
+      updateButtonState(false)
     })
   </script>
 

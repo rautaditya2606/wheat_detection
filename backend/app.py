@@ -36,12 +36,10 @@ import requests
 import json
 import uuid
 import threading
-import queue
 import numpy as np
 import onnxruntime as ort
 import cloudinary
 import cloudinary.uploader
-from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from PIL import Image
 from collections import OrderedDict, deque
@@ -99,10 +97,6 @@ def get_current_user_weather():
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
-
-# Dictionary to store results in-memory during a session: {batch_id: {image_id: {result_data}}}
-# Note: Results are also persisted to ClickHouse (Feedback model)
-batch_results = {}
 
 # Thread-safe lock for model inference (sequential processing constraint)
 model_lock = threading.Lock()
@@ -688,224 +682,6 @@ def predict():
     except Exception as e:
         app.logger.error(f"Unexpected error in predict route: {str(e)}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred"}), 500
-
-
-@app.route("/bulk-predict", methods=["POST"])
-def bulk_predict():
-    """Endpoint for parallel image uploads. Returns a batch_id and image_id immediately."""
-    try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file part"}), 400
-
-        file = request.files["file"]
-        batch_id = request.form.get("batch_id")
-        image_id = request.form.get("image_id")
-
-        if not batch_id or not image_id:
-            return jsonify({"error": "Missing batch_id or image_id"}), 400
-
-        if file.filename == "":
-            return jsonify({"error": "No selected file"}), 400
-
-        # Save file
-        filename = secure_filename(f"{batch_id}_{image_id}_{file.filename}")
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        file.save(filepath)
-
-        # Process everything sequentially and return results in the same response
-        # 1. Cloudinary Upload
-        try:
-            upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
-            cloudinary_url = upload_result.get("secure_url")
-        except Exception as ce:
-            app.logger.error(f"Cloudinary upload failed for upload: {str(ce)}")
-            if batch_id not in batch_results:
-                batch_results[batch_id] = {}
-            batch_results[batch_id][image_id] = {
-                "image_id": image_id,
-                "status": "failed",
-                "error": "Upload failed",
-            }
-            return jsonify(batch_results[batch_id][image_id]), 200
-
-        # 2. CLIP Validation
-        val_url = CLIP_VERIFY_URL.rstrip("/")
-        try:
-            val_response = requests.post(
-                val_url, json={"image_url": cloudinary_url}, timeout=45
-            )
-            if val_response.status_code == 200:
-                val_data = val_response.json()
-                if not val_data.get("is_valid", True):
-                    return jsonify(
-                        {
-                            "image_id": image_id,
-                            "status": "failed",
-                            "error": f"Not a wheat image (confidence: {val_data.get('wheat_score', 0.0) * 100:.2f}%)",
-                        }
-                    ), 200
-        except Exception as e:
-            app.logger.error(f"CLIP error: {str(e)}")
-
-        # 3. Model Inference (Sequential with model_lock)
-        image = Image.open(filepath).convert("RGB")
-        processed_data = preprocess_image(image)
-        with model_lock:
-            ort_inputs = {ort_session.get_inputs()[0].name: processed_data}
-            ort_outs = ort_session.run(None, ort_inputs)
-
-        flat_logits = ort_outs[0].flatten()
-        exp_val = np.exp(flat_logits - np.max(flat_logits))
-        probs = exp_val / np.sum(exp_val)
-        class_idx = int(np.argmax(probs))
-        label = CLASS_NAMES.get(class_idx, "Unknown")
-        confidence = float(np.max(probs))
-
-        # 4. Highlighted Overlay
-        highlighted_url = None
-        if label != "Healthy":
-            highlighted_filename = f"highlighted_{os.path.basename(filepath)}"
-            highlighted_path = os.path.join(
-                app.config["UPLOAD_FOLDER"], highlighted_filename
-            )
-            if highlight_infection(filepath, label, highlighted_path):
-                highlighted_url = f"/uploads/{highlighted_filename}"
-
-        # 5. Result Object
-        result_entry = {
-            "image_id": image_id,
-            "status": "completed",
-            "label": label,
-            "confidence": f"{confidence * 100:.2f}%",
-            "cloudinary_url": cloudinary_url,
-            "highlighted_url": highlighted_url,
-            "timestamp": time.time(),
-        }
-
-        # 6. Persistence & Memory
-        if batch_id not in batch_results:
-            batch_results[batch_id] = {}
-        batch_results[batch_id][image_id] = result_entry
-
-        new_feedback = Feedback(
-            image_url=cloudinary_url,
-            predicted_class=label,
-            confidence=float(confidence * 100),
-            is_correct=True,
-        )
-        db.session.add(new_feedback)
-        db.session.commit()
-        result_entry["feedback_id"] = new_feedback.id
-
-        return jsonify(result_entry)
-
-    except Exception as e:
-        app.logger.error(f"Bulk predict error: {str(e)}")
-        if "batch_id" in locals() and batch_id and "image_id" in locals() and image_id:
-            if batch_id not in batch_results:
-                batch_results[batch_id] = {}
-            batch_results[batch_id][image_id] = {
-                "image_id": image_id,
-                "status": "failed",
-                "error": str(e),
-            }
-            return jsonify(batch_results[batch_id][image_id]), 200
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/results-stream/<batch_id>")
-def results_stream(batch_id):
-    """SSE endpoint to stream results back to the user as they finish."""
-
-    def event_stream():
-        sent_images = set()
-        start_time = time.time()
-        timeout = 300  # 5 minutes
-
-        while time.time() - start_time < timeout:
-            if batch_id in batch_results:
-                current_results = batch_results[batch_id]
-                for img_id, data in list(current_results.items()):
-                    if img_id not in sent_images:
-                        yield f"data: {json.dumps(data)}\n\n"
-                        sent_images.add(img_id)
-
-            time.sleep(0.5)
-            # Send keep-alive
-            yield ": keep-alive\n\n"
-
-    return make_response(
-        event_stream(),
-        {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Transfer-Encoding": "chunked",
-            "Connection": "keep-alive",
-        },
-    )
-
-
-@app.route("/batch-recommendation/<batch_id>")
-def batch_recommendation(batch_id):
-    """Generates a cohesive AI recommendation for the entire batch of images."""
-    if batch_id not in batch_results:
-        return "No batch data found.", 404
-
-    # Only consider successfully processed wheat images
-    results = [
-        r for r in batch_results[batch_id].values() if r.get("status") == "completed"
-    ]
-    if not results:
-        return "No valid wheat images to analyze.", 400
-
-    # Summarize findings
-    disease_counts = {}
-    for r in results:
-        label = r.get("label")
-        if not label or label == "Unknown":
-            continue
-        disease_counts[label] = disease_counts.get(label, 0) + 1
-
-    total = sum(disease_counts.values())
-    if total == 0:
-        return "No confident disease predictions available.", 400
-    summary_str = ", ".join(
-        [f"{count} {label}" for label, count in disease_counts.items()]
-    )
-
-    # Simple logic for now, could be upgraded to use LLM in openai_integration.py
-    main_disease = max(disease_counts, key=disease_counts.get)
-
-    # Get weather data for contextual intelligence
-    weather = get_current_user_weather()
-    weather_desc = (
-        weather.get("condition", {}).get("text", "Normal")
-        if isinstance(weather, dict)
-        else "Normal"
-    )
-
-    prompt_context = {
-        "weather": {"condition": weather_desc},
-        "crop_condition": f"Mixed findings across {total} images: {summary_str}",
-        "disease_detected": main_disease,
-        "is_batch": True,
-    }
-
-    # Try to get detailed LLM recommendation if API key exists
-    try:
-        from openai_integration import get_openai_recommendation
-
-        html_rec = get_openai_recommendation(prompt_context)
-        if isinstance(html_rec, str):
-            return html_rec
-    except:
-        pass
-
-    # Fallback to simple HTML recommendation
-    if main_disease == "Healthy":
-        return f"<p class='text-green-700 font-semibold'>Field status looks great! {disease_counts.get('Healthy', 0)} of {total} images were healthy. Maintain current practices.</p>"
-    else:
-        return f"<p class='text-red-700 font-semibold'>Warning: Significant presence of {main_disease} detected ({disease_counts.get(main_disease, 0)}/{total} images). We recommend immediate inspection and targeted treatment for infected areas.</p>"
 
 
 @app.route("/update-location", methods=["POST"])
