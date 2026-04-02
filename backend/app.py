@@ -100,147 +100,12 @@ def get_current_user_weather():
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
-# Global variables for bulk processing
-processing_queue = queue.Queue()
-# dictionary to store results: {batch_id: {image_id: {result_data}}}
+# Dictionary to store results in-memory during a session: {batch_id: {image_id: {result_data}}}
+# Note: Results are also persisted to ClickHouse (Feedback model)
 batch_results = {}
+
 # Thread-safe lock for model inference (sequential processing constraint)
 model_lock = threading.Lock()
-
-
-def bg_worker():
-    """Background worker that processes images from the queue one by one."""
-    while True:
-        try:
-            task = processing_queue.get()
-            if task is None:
-                break
-
-            batch_id = task["batch_id"]
-            image_id = task["image_id"]
-            filepath = task["filepath"]
-            cloudinary_url = task.get("cloudinary_url")
-            user_id = task.get("user_id")
-
-            # Use app context for DB operations if needed
-            with app.app_context():
-                try:
-                    # 0. CLIP validation (mirror single-upload pipeline)
-                    try:
-                        if cloudinary_url:
-                            val_url = CLIP_VERIFY_URL.rstrip("/")
-                            val_response = requests.post(
-                                val_url, json={"image_url": cloudinary_url}, timeout=45
-                            )
-
-                            if val_response.status_code == 200:
-                                val_data = val_response.json()
-                                is_valid = val_data.get("is_valid", True)
-                                wheat_score = val_data.get("wheat_score", 0.0)
-
-                                if not is_valid:
-                                    app.logger.warning(
-                                        f"[BULK] CLIP rejected {image_id} (score={wheat_score})"
-                                    )
-                                    if batch_id not in batch_results:
-                                        batch_results[batch_id] = {}
-                                    batch_results[batch_id][image_id] = {
-                                        "image_id": image_id,
-                                        "status": "failed",
-                                        "error": f"Not a wheat image (confidence: {wheat_score * 100:.2f}%)",
-                                    }
-                                    processing_queue.task_done()
-                                    continue
-                            else:
-                                app.logger.error(
-                                    f"[BULK] CLIP API error {val_response.status_code}"
-                                )
-                        else:
-                            app.logger.warning(
-                                "[BULK] Missing Cloudinary URL, skipping CLIP"
-                            )
-                    except Exception as ce:
-                        app.logger.error(f"[BULK] CLIP validation error: {str(ce)}")
-                        # Fail-open (same as single flow)
-
-                    # 1. Classify image (Sequential processing with model_lock)
-                    image = Image.open(filepath).convert("RGB")
-                    processed_data = preprocess_image(image)
-
-                    with model_lock:
-                        ort_inputs = {ort_session.get_inputs()[0].name: processed_data}
-                        ort_outs = ort_session.run(None, ort_inputs)
-
-                    logits = ort_outs[0]
-                    # Softmax workaround for flattened arrays
-                    flat_logits = logits.flatten()
-                    exp_val = np.exp(flat_logits - np.max(flat_logits))
-                    probs = exp_val / np.sum(exp_val)
-
-                    class_idx = int(np.argmax(probs))
-                    label = CLASS_NAMES.get(class_idx, "Unknown")
-                    confidence = float(np.max(probs))
-
-                    # 3. Create Highlighted Overlay for infected images
-                    highlighted_url = None
-                    if label != "Healthy":
-                        try:
-                            highlighted_filename = f"highlighted_{os.path.basename(filepath)}"
-                            highlighted_path = os.path.join(app.config["UPLOAD_FOLDER"], highlighted_filename)
-                            if highlight_infection(filepath, label, highlighted_path):
-                                highlighted_url = f"/uploads/{highlighted_filename}"
-                                app.logger.info(f"[BULK] Highlighted image saved to {highlighted_path}")
-                        except Exception as he:
-                            app.logger.error(f"[BULK] Overlay error: {str(he)}")
-
-                    # 4. Store result
-                    if batch_id not in batch_results:
-                        batch_results[batch_id] = {}
-
-                    result_entry = {
-                        "image_id": image_id,
-                        "status": "completed",
-                        "label": label,
-                        "confidence": f"{confidence * 100:.2f}%",
-                        "cloudinary_url": cloudinary_url,
-                        "highlighted_url": highlighted_url,
-                        "timestamp": time.time(),
-                    }
-                    batch_results[batch_id][image_id] = result_entry
-
-                    # 5. Save to DB with user_id mapping
-                    # Note: Feedback model currently doesn't have a user_id column
-                    # so we'll skip passing it until the schema is updated.
-                    new_feedback = Feedback(
-                        image_url=cloudinary_url, 
-                        predicted_class=label, 
-                        confidence=float(confidence * 100),
-                        is_correct=True
-                    )
-                    db.session.add(new_feedback)
-                    db.session.commit()
-                    result_entry["feedback_id"] = new_feedback.id
-
-                except Exception as e:
-                    app.logger.error(f"Error in bg_worker for {image_id}: {str(e)}")
-                    if batch_id not in batch_results:
-                        batch_results[batch_id] = {}
-                    batch_results[batch_id][image_id] = {
-                        "error": str(e),
-                        "status": "failed",
-                        "image_id": image_id,
-                    }
-
-            processing_queue.task_done()
-        except Exception as e:
-            app.logger.error(f"Worker thread error: {str(e)}")
-
-
-# Start the background worker thread
-threading.Thread(target=bg_worker, daemon=True).start()
-
-# Initialize ThreadPoolExecutor for background/parallel tasks
-executor = ThreadPoolExecutor(max_workers=4)
 
 # Configuration
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
@@ -831,49 +696,79 @@ def bulk_predict():
         filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(filepath)
 
-        # Capture user_id from context
-        user_id = current_user.id if current_user.is_authenticated else None
+        # Process everything sequentially and return results in the same response
+        # 1. Cloudinary Upload
+        try:
+            upload_result = cloudinary.uploader.upload(filepath, folder="wheat_disease")
+            cloudinary_url = upload_result.get("secure_url")
+        except Exception as ce:
+            app.logger.error(f"Cloudinary upload failed for upload: {str(ce)}")
+            return jsonify({"error": "Upload failed", "image_id": image_id}), 500
 
-        def process_upload_and_queue(fp, bid, iid, uid):
-            max_retries = 3
-            retry_count = 0
-            backoff_factor = 2
-            
-            while retry_count <= max_retries:
-                try:
-                    upload_result = cloudinary.uploader.upload(fp, folder="wheat_disease")
-                    c_url = upload_result.get("secure_url")
+        # 2. CLIP Validation
+        val_url = CLIP_VERIFY_URL.rstrip("/")
+        try:
+            val_response = requests.post(val_url, json={"image_url": cloudinary_url}, timeout=45)
+            if val_response.status_code == 200:
+                val_data = val_response.json()
+                if not val_data.get("is_valid", True):
+                    return jsonify({
+                        "image_id": image_id,
+                        "status": "failed",
+                        "error": f"Not a wheat image (confidence: {val_data.get('wheat_score', 0.0) * 100:.2f}%)"
+                    }), 200
+        except Exception as e:
+            app.logger.error(f"CLIP error: {str(e)}")
 
-                    # Add to sequential processing queue
-                    processing_queue.put(
-                        {
-                            "batch_id": bid,
-                            "image_id": iid,
-                            "filepath": fp,
-                            "cloudinary_url": c_url,
-                            "user_id": uid,
-                        }
-                    )
-                    return  # Success, exit the loop
-                except Exception as e:
-                    retry_count += 1
-                    if retry_count > max_retries:
-                        app.logger.error(f"Async upload failed for {iid} after {max_retries} retries: {str(e)}")
-                        if bid not in batch_results:
-                            batch_results[bid] = {}
-                        batch_results[bid][iid] = {
-                            "status": "failed",
-                            "error": "Upload failed after multiple attempts",
-                            "image_id": iid,
-                        }
-                    else:
-                        sleep_time = backoff_factor ** retry_count
-                        app.logger.warning(f"Retry {retry_count}/{max_retries} for {iid} after error: {str(e)}. Waiting {sleep_time}s...")
-                        time.sleep(sleep_time)
+        # 3. Model Inference (Sequential with model_lock)
+        image = Image.open(filepath).convert("RGB")
+        processed_data = preprocess_image(image)
+        with model_lock:
+            ort_inputs = {ort_session.get_inputs()[0].name: processed_data}
+            ort_outs = ort_session.run(None, ort_inputs)
 
-        executor.submit(process_upload_and_queue, filepath, batch_id, image_id, user_id)
+        flat_logits = ort_outs[0].flatten()
+        exp_val = np.exp(flat_logits - np.max(flat_logits))
+        probs = exp_val / np.sum(exp_val)
+        class_idx = int(np.argmax(probs))
+        label = CLASS_NAMES.get(class_idx, "Unknown")
+        confidence = float(np.max(probs))
 
-        return jsonify({"status": "queued", "batch_id": batch_id, "image_id": image_id})
+        # 4. Highlighted Overlay
+        highlighted_url = None
+        if label != "Healthy":
+            highlighted_filename = f"highlighted_{os.path.basename(filepath)}"
+            highlighted_path = os.path.join(app.config["UPLOAD_FOLDER"], highlighted_filename)
+            if highlight_infection(filepath, label, highlighted_path):
+                highlighted_url = f"/uploads/{highlighted_filename}"
+
+        # 5. Result Object
+        result_entry = {
+            "image_id": image_id,
+            "status": "completed",
+            "label": label,
+            "confidence": f"{confidence * 100:.2f}%",
+            "cloudinary_url": cloudinary_url,
+            "highlighted_url": highlighted_url,
+            "timestamp": time.time(),
+        }
+
+        # 6. Persistence & Memory
+        if batch_id not in batch_results:
+            batch_results[batch_id] = {}
+        batch_results[batch_id][image_id] = result_entry
+
+        new_feedback = Feedback(
+            image_url=cloudinary_url,
+            predicted_class=label,
+            confidence=float(confidence * 100),
+            is_correct=True
+        )
+        db.session.add(new_feedback)
+        db.session.commit()
+        result_entry["feedback_id"] = new_feedback.id
+
+        return jsonify(result_entry)
 
     except Exception as e:
         app.logger.error(f"Bulk predict error: {str(e)}")
@@ -896,9 +791,6 @@ def results_stream(batch_id):
                     if img_id not in sent_images:
                         yield f"data: {json.dumps(data)}\n\n"
                         sent_images.add(img_id)
-
-                # Check if we should terminate (caller can signal end or we can check queue)
-                # For simplicity, we just keep polling until timeout or client disconnects
 
             time.sleep(0.5)
             # Send keep-alive
