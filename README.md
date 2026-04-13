@@ -10,9 +10,9 @@
 
 Most crop-disease demos stop at a class label. This system goes further:
 
-1. **Async Bulk Diagnostics**: Upload up to 10 images in parallel. To ensure memory stability on low-resource environments, inference is serialized via a `threading.Lock` while results are streamed back in real-time via Server-Sent Events (SSE).
+1. **Stable Bulk Diagnostics (Up to 10 Images)**: Upload up to 10 images in one request. The backend processes each image sequentially (Cloudinary -> CLIP validation -> ONNX inference -> overlay) for predictable behavior on low-resource deployments.
 2. **Heuristic Region Overlays**: Automatically generates visual disease highlighting using OpenCV-based color and texture analysis (e.g., reddish-brown rust pustules) to ground the model's prediction in visual evidence.
-3. **Collective AI Recommendation**: Aggregates results from multiple field samples + real-time weather + geolocation to provide a "Global Field Health" summary using OpenAI GPT orchestration.
+3. **On-Demand AI Recommendation**: Bulk analysis focuses on fast, stable classification. Users open an image result and click **Get Expert Recommendations** on `/result` to generate personalized guidance.
 4. **Quantized Edge Inference**: Uses an INT8 quantized ResNet50 model (89% accuracy) optimized for 75% smaller footprint and faster CPU cold-starts.
 5. **Human-in-the-Loop Feedback**: Captures user-corrected labels and stores them in Aiven ClickHouse, creating a verifiable ground-truth dataset for future active learning cycles.
 
@@ -28,14 +28,13 @@ graph TB
     classDef backendNode fill:#f59e0b,stroke:#d97706,stroke-width:1px,color:#fff,rx:5,ry:5;
     classDef storageNode fill:#8b5cf6,stroke:#7c3aed,stroke-width:1px,color:#fff,rx:5,ry:5;
     classDef intelligenceNode fill:#10b981,stroke:#059669,stroke-width:1px,color:#fff,rx:5,ry:5;
-    classDef sseNode fill:#ef4444,stroke:#dc2626,stroke-width:1px,color:#fff,rx:10,ry:10;
+    classDef uiNode fill:#ef4444,stroke:#dc2626,stroke-width:1px,color:#fff,rx:10,ry:10;
 
     %% Nodes
     User([fa:fa-user User Browser]):::userNode
     
     subgraph "Compute & Orchestration"
-        Backend{Flask Entrypoint}:::backendNode
-        Worker[[Async Worker]]:::backendNode
+        Backend{Flask Route Layer}:::backendNode
         ResNet(ResNet50 Engine):::backendNode
         OpenCV(OpenCV Highlight):::backendNode
     end
@@ -50,42 +49,40 @@ graph TB
         ClickHouse[(Aiven ClickHouse)]:::intelligenceNode
     end
 
-    Response[[Reactive UI Grid]]:::sseNode
+    Response[[Results Grid + Detail View]]:::uiNode
 
     %% Styled Connections
     User ==>|Upload + Metadata| Backend
-    Backend -.->|Queue Task| Worker
-    Worker --> ResNet
-    Worker --> OpenCV
-    Worker --> Cloudinary
-    Worker --> CLIP
-    Worker --> LLM
-    Worker --> ClickHouse
-    Worker -.->|SSE Stream| SSE[Server-Sent Events]:::sseNode
-    SSE ==>|Real-time Updates| Response
+    Backend --> Cloudinary
+    Backend --> CLIP
+    Backend --> ResNet
+    Backend --> OpenCV
+    Backend --> ClickHouse
+    User ==>|Open Result + Click Recommendation| LLM
+    Backend ==>|JSON Response| Response
 
     %% Global Link Styling
     linkStyle default stroke:#64748b,stroke-width:1px,transition:0.3s;
 ```
 
 ### Flow Logic
-1. **Parallel Ingestion**: Multiple images are uploaded simultaneously to the server.
-2. **Sequential Inference**: To prevent memory overflow, a `threading.Lock` ensures only one image hits the ONNX model at a time.
-3. **Real-time Streaming**: Results (labels, confidence, and highlighted overlay URLs) are "pushed" to the frontend as they finish, allowing users to see the first result immediately while others process.
-4. **Visual Diagnosis**: OpenCV analyzes the specific color signatures (like the reddish-brown of Rust) to draw contours around infected zones.
-5. **CLIP Gatekeeper**: The Hugging Face microservice validates that the image contains wheat before full processing.
+1. **Single or Bulk Upload**: User uploads 1 image (`/predict`) or up to 10 images (`/predict-bulk`).
+2. **Sequential Processing**: Each bulk image is processed in-order for stability in deployment environments.
+3. **Validation First**: Cloudinary URL is created, then CLIP verifies wheat content; non-wheat images are rejected.
+4. **Visual Diagnosis**: OpenCV heuristics generate highlighted overlays for infected regions.
+5. **Recommendation on Demand**: AI recommendation is requested from the result page when the user clicks the recommendation button.
 
 ---
 
 ## Core Features
 
-- **Async Bulk Upload & Streaming** — Process up to 10 field samples simultaneously. Images upload in parallel, while inference is serialized via `threading.Lock` to prevent memory overflow. Uses SSE (Server-Sent Events) for real-time UI updates.
+- **Stable Bulk Upload (Up to 10 Images)** — A simple and deployment-friendly bulk endpoint (`/predict-bulk`) that processes images sequentially and returns a unified JSON response.
 - **Heuristic Disease Highlighting** — Visual overlays for 15+ diseases. Uses OpenCV color-masking and edge detection to show the user exactly where the model's prediction aligns with visual symptoms.
 - **Mobile-Perfect Responsiveness** — Optimized Tailwind UI with adaptive grids (2-column mobile, 4-column desktop) and touch-optimized navigation for field use.
 - **Multi-Stage AI Validation (CLIP Gatekeeper)** — Uses a specialized CLIP microservice to validate image content before full processing. Non-wheat images are automatically rejected and purged from storage.
 - **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 accuracy across 15 wheat disease classes.
 - **INT8 Quantization** — Model size reduced from 90MB to 22.6MB (75% reduction), faster cold-starts on CPU deployment.
-- **Context-Aware Recommendations** — Aggregates bulk results + weather + geolocation into a GPT-3.5-Turbo prompt for field-specific guidance.
+- **Context-Aware Recommendations** — Generated on demand from the result page (`/result`) using weather + user questionnaire + detected disease context.
 - **Admin Monitoring Dashboard** — Secure `/admin` interface for auditing predictions and monitoring system health.
 
 ---
@@ -94,7 +91,7 @@ graph TB
 
 | Layer | Tools |
 |---|---|
-| Backend | Flask, Flask-SQLAlchemy, Uvicorn / ASGI |
+| Backend | Flask, Flask-SQLAlchemy, Gunicorn |
 | ML | PyTorch (training), ONNX, ONNX Runtime |
 | Storage | Cloudinary (images), Aiven ClickHouse (feedback records) |
 | Intelligence | OpenAI GPT-3.5-Turbo, WeatherAPI, GeoIP2 |
@@ -138,9 +135,10 @@ Every uploaded image is stored in Cloudinary. The returned `secure_url` is saved
 
 | Field | Type | Description |
 |---|---|---|
-| id | UUID | Primary key |
+| id | String(36) | UUID-formatted primary key |
 | image_url | String | Cloudinary secure URL |
-| predicted_class | String | Model's output |
+| predicted_class | String | Model output label |
+| confidence | Float (nullable) | Prediction confidence percent |
 | correct_class | String (nullable) | User-corrected label if flagged |
 | is_correct | Boolean | User confirmation |
 | created_at | DateTime | Timestamp |
@@ -162,9 +160,10 @@ SELECT image_url, correct_class FROM feedback
 ```
 /
 ├── backend/
-│   ├── app.py                          # Main ASGI/Flask application
+│   ├── app.py                          # Main Flask application
 │   ├── models.py                       # Feedback schema (ClickHouse via SQLAlchemy)
-│   ├── utils.py                        # OpenAI + Weather integrations
+│   ├── utils.py                        # Utility helpers (weather + misc)
+│   ├── openai_integration.py           # OpenAI recommendation orchestration
 │   ├── location.py                     # Geolocation logic
 │   ├── convert_to_onnx.py              # PyTorch → ONNX export
 │   ├── optimize_onnx.py                # ONNX graph simplification
