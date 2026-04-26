@@ -23,35 +23,16 @@ This demonstrates end-to-end engineering across ML inference, backend architectu
 ## Architecture
 ```mermaid
 graph TB
-    %% Enhanced Style Definitions
-    classDef userNode fill:#0ea5e9,stroke:#0284c7,stroke-width:1px,color:#fff,rx:10,ry:10;
-    classDef backendNode fill:#f59e0b,stroke:#d97706,stroke-width:1px,color:#fff,rx:5,ry:5;
-    classDef storageNode fill:#8b5cf6,stroke:#7c3aed,stroke-width:1px,color:#fff,rx:5,ry:5;
-    classDef intelligenceNode fill:#10b981,stroke:#059669,stroke-width:1px,color:#fff,rx:5,ry:5;
-    classDef uiNode fill:#ef4444,stroke:#dc2626,stroke-width:1px,color:#fff,rx:10,ry:10;
+    User([User Browser])
+    Backend{Flask Route Layer}
+    ResNet(ResNet50 Engine)
+    OpenCV(OpenCV Highlight)
+    Cloudinary[(Cloudinary)]
+    CLIP{HF CLIP}
+    LLM(GPT-3.5)
+    ClickHouse[(Aiven ClickHouse)]
+    Response[[Results Grid + Detail View]]
 
-    %% Nodes
-    User([fa:fa-user User Browser]):::userNode
-    
-    subgraph "Compute & Orchestration"
-        Backend{Flask Route Layer}:::backendNode
-        ResNet(ResNet50 Engine):::backendNode
-        OpenCV(OpenCV Highlight):::backendNode
-    end
-
-    subgraph "Validation & Assets"
-        Cloudinary[(Cloudinary)]:::storageNode
-        CLIP{HF CLIP}:::storageNode
-    end
-
-    subgraph "Persistence & Intelligence"
-        LLM(GPT-3.5):::intelligenceNode
-        ClickHouse[(Aiven ClickHouse)]:::intelligenceNode
-    end
-
-    Response[[Results Grid + Detail View]]:::uiNode
-
-    %% Styled Connections
     User ==>|Upload + Metadata| Backend
     Backend --> Cloudinary
     Backend --> CLIP
@@ -60,9 +41,6 @@ graph TB
     Backend --> ClickHouse
     User ==>|Open Result + Click Recommendation| LLM
     Backend ==>|JSON Response| Response
-
-    %% Global Link Styling
-    linkStyle default stroke:#64748b,stroke-width:1px,transition:0.3s;
 ```
 
 ### Flow Logic
