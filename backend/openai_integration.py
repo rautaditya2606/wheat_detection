@@ -79,7 +79,7 @@ def get_openai_recommendation(user_data):
 
     prompt = f"""
 You are an expert agricultural scientist and wheat production specialist. 
-Provide a professional, highly structured recommendation for a farmer whose crop is affected.
+Provide a professional, highly structured, and COMPREHENSIVE recommendation for a farmer whose crop is affected.
 
 FARMER'S CURRENT CONTEXT:
 - Location: {user_data.get('location', {}).get('city', 'Unknown')}, {user_data.get('location', {}).get('country', 'Unknown')}
@@ -96,29 +96,29 @@ Use the following structure exactly:
 
 <div class="analysis-section mb-6">
   <h3 class="text-xl font-bold text-blue-800 border-b-2 border-blue-200 pb-2 mb-4">I. Scientific Analysis</h3>
-  <p class="text-gray-700 leading-relaxed mb-4">[Provide a detailed scientific explanation of the {user_data.get('disease_detected')}. Explain how current weather ({weather_condition}, {weather.get('temp_c')}°C) affects the pathogen's lifecycle and spread in Pune's environment. Mention specific biological characteristics of the issue.]</p>
+  <p class="text-gray-700 leading-relaxed mb-4">[Provide a detailed, in-depth scientific explanation of the {user_data.get('disease_detected')}. Explain how current weather ({weather_condition}, {weather.get('temp_c')}°C) and humidity ({weather.get('humidity')}%) affects the pathogen's lifecycle, spore germination, and rate of spread in the {user_data.get('location', {}).get('city', 'local')} environment. Mention specific biological characteristics, host-pathogen interactions, and why the current conditions are particularly favorable or unfavorable for this disease.]</p>
 </div>
 
 <div class="actions-section mb-6 bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
   <h3 class="text-xl font-bold text-red-800 mb-3">II. Immediate Rescue Actions</h3>
   <ul class="list-disc pl-5 space-y-3">
-    <li><strong>[Action Name]:</strong> [Provide 2-3 sentences explaining a specific, high-priority physical or cultural intervention.]</li>
-    <li><strong>[Organic/Chemical Treatment]:</strong> [Recommend specific active ingredients (e.g., Propiconazole for rust, or Neem-based solutions) and explain exactly how they work against {user_data.get('disease_detected')}.]</li>
-    <li><strong>[Dosage/Application]:</strong> [Provide detailed application instructions, including optimal timing (morning/evening) and any safety precautions regarding the weather.]</li>
+    <li><strong>[Action Name]:</strong> [Provide a thorough explanation (3-4 sentences) of a specific, high-priority physical or cultural intervention. Describe how to perform it and why it's effective.]</li>
+    <li><strong>[Organic/Chemical Treatment]:</strong> [Recommend specific active ingredients (e.g., Propiconazole for rust, or Neem-based solutions) and explain in detail exactly how they work at a molecular or cellular level against {user_data.get('disease_detected')}.]</li>
+    <li><strong>[Dosage/Application]:</strong> [Provide comprehensive application instructions, including precise dosage, water mixing ratios, optimal timing (morning/evening), frequency of application, and critical safety precautions regarding weather and personal protection.]</li>
   </ul>
 </div>
 
 <div class="prevention-section mb-6 bg-green-50 p-4 rounded-lg border-l-4 border-green-500">
   <h3 class="text-xl font-bold text-green-800 mb-3">III. Long-term Management Plan</h3>
   <ul class="list-disc pl-5 space-y-3">
-    <li><strong>Soil & Nutrient Management:</strong> [Detailed advice on soil health, mentioning how specific nutrients or organic amendments can build crop resistance.]</li>
-    <li><strong>Climate Adaptive Strategy:</strong> [Detailed advice on irrigation timing or crop rotation specifically designed to prevent the recurrence of {user_data.get('disease_detected')} in future seasons.]</li>
+    <li><strong>Soil & Nutrient Management:</strong> [Extensive advice on soil health and fertility. Mention how specific micronutrients (like Zinc or Boron) or organic amendments (like vermicompost) can specifically build physiological resistance against {user_data.get('disease_detected')}.]</li>
+    <li><strong>Climate Adaptive Strategy:</strong> [Detailed, multi-year advice on irrigation systems (e.g., switching to drip), crop rotation partners, or resistant variety selection specifically designed to break the lifecycle of {user_data.get('disease_detected')} and ensure long-term wheat farm resilience.]</li>
   </ul>
 </div>
 
 INSTRUCTIONS:
 - Use professional yet accessible language.
-- provide substantial, actionable details for each point while keeping the total length concise (around 300-400 words).
+- provide substantial, actionable, and voluminous details for each point. The total length should be significant (around 600-800 words) to provide deep value.
 - Avoid generic advice; tailor every sentence to the disease, weather, and farm parameters provided.
 - Ensure the HTML is valid and all tags are properly closed.
 - DO NOT use any markdown symbols like #, *, or backticks anywhere in your response.

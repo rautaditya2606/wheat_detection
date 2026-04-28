@@ -1104,6 +1104,7 @@ def get_recommendations():
                 # Store recommendation in session for export
                 session["last_recommendation"] = result["recommendation"]
                 session["last_image_path"] = data.get("image_path")
+                session["last_highlighted_path"] = data.get("highlighted_url")
 
                 return jsonify(
                     {"status": "success", "recommendation": result["recommendation"]}
@@ -1149,6 +1150,7 @@ def export_report():
     user_data = session.get("last_user_data")
     recommendation = session.get("last_recommendation")
     image_path = session.get("last_image_path")
+    highlighted_path = session.get("last_highlighted_path")
 
     if not user_data or not recommendation:
         flash("No report data available to export.", "warning")
@@ -1214,23 +1216,59 @@ def export_report():
     story.append(t)
     story.append(Spacer(1, 20))
 
-    # Add Image if available
-    if image_path:
-        try:
-            # Handle both local and URL paths
-            if image_path.startswith("static/"):
-                full_image_path = os.path.join(app.root_path, image_path)
-            else:
-                full_image_path = os.path.join(
-                    app.root_path, "static", "uploads", os.path.basename(image_path)
-                )
+    # Add Images (Original and Highlighted)
+    if image_path or highlighted_path:
+        images_to_add = []
+        
+        # Original Image
+        if image_path:
+            try:
+                # Normalize and find the original image
+                orig_filename = os.path.basename(image_path)
+                full_image_path = os.path.join(app.root_path, "static", "uploads", orig_filename)
+                
+                # Check samples as fallback
+                if not os.path.exists(full_image_path):
+                    full_image_path = os.path.join(app.root_path, "static", "samples", orig_filename)
 
-            if os.path.exists(full_image_path):
-                img = RLImage(full_image_path, width=400, height=300)
-                story.append(img)
-                story.append(Spacer(1, 20))
-        except Exception as e:
-            print(f"Error adding image to PDF: {e}")
+                if os.path.exists(full_image_path):
+                    img = RLImage(full_image_path, width=240, height=180)
+                    images_to_add.append([Paragraph("<b>Original Leaf Image</b>", styles["BodyText"]), img])
+            except Exception as e:
+                app.logger.error(f"Error adding original image to PDF: {e}")
+
+        # Highlighted Image (OpenCV Processed)
+        if highlighted_path:
+            try:
+                high_filename = os.path.basename(highlighted_path)
+                full_highlight_path = os.path.join(app.root_path, "static", "uploads", high_filename)
+
+                if os.path.exists(full_highlight_path):
+                    img = RLImage(full_highlight_path, width=240, height=180)
+                    images_to_add.append([Paragraph("<b>AI Infection Highlighting</b>", styles["BodyText"]), img])
+            except Exception as e:
+                app.logger.error(f"Error adding processed image to PDF: {e}")
+
+        # Add images to the story
+        if len(images_to_add) == 2:
+            # Side by side in a table
+            img_table_data = [
+                [images_to_add[0][0], images_to_add[1][0]],
+                [images_to_add[0][1], images_to_add[1][1]]
+            ]
+            img_table = Table(img_table_data, colWidths=[240, 240])
+            img_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+            ]))
+            story.append(img_table)
+        elif len(images_to_add) == 1:
+            # Single image centered
+            story.append(images_to_add[0][0])
+            story.append(images_to_add[0][1])
+        
+        story.append(Spacer(1, 20))
 
     # Recommendation Content
     story.append(Paragraph("Expert Recommendations", section_style))

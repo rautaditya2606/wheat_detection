@@ -249,6 +249,7 @@ if (analyzeBtn) {
                 body: JSON.stringify({
                     disease: '{{ label }}',
                     image_path: '{{ image_path }}',
+                    highlighted_url: '{{ highlighted_path }}',
                     weather_data: {{ weather_data|tojson|safe }}
                 })
             });
