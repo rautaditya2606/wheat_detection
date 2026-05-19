@@ -2,7 +2,7 @@
 
 > Production-style web platform for wheat disease detection with contextual AI recommendations.
 
-**[Live Demo](https://wheat-detection-es09.onrender.com/)**
+**[Live Demo](https://wheat-disease-detector.onrender.com/)**
 
 ---
 
