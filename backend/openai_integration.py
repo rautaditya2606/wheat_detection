@@ -9,7 +9,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Use stable OpenAI model
-MODEL_TO_USE = "gpt-3.5-turbo"
+MODEL_TO_USE = "gpt-4o-mini"
 
 # Initialize OpenAI client safely at import time so any
 # library/env mismatch doesn't raise during a request.

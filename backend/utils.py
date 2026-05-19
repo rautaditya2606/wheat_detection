@@ -11,8 +11,8 @@ load_dotenv()
 # don't crash the whole app (e.g. if library/env mismatch)
 openai_api_key = os.getenv("OPENAI_API_KEY")
 client = None
-# Using gpt-3.5-turbo as a stable default
-model_name = "gpt-3.5-turbo"
+# Using gpt-4o-mini as a stable default
+model_name = "gpt-4o-mini"
 
 if openai_api_key:
     try:

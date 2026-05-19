@@ -45,7 +45,7 @@ graph TB
     end
 
     subgraph "Persistence & Intelligence"
-        LLM(GPT-3.5):::intelligenceNode
+        LLM(GPT-4o-Mini):::intelligenceNode
         ClickHouse[(Aiven ClickHouse)]:::intelligenceNode
     end
 
@@ -80,10 +80,48 @@ graph TB
 - **Heuristic Disease Highlighting** — Visual overlays for 15+ diseases. Uses OpenCV color-masking and edge detection to show the user exactly where the model's prediction aligns with visual symptoms.
 - **Mobile-Perfect Responsiveness** — Optimized Tailwind UI with adaptive grids (2-column mobile, 4-column desktop) and touch-optimized navigation for field use.
 - **Multi-Stage AI Validation (CLIP Gatekeeper)** — Uses a specialized CLIP microservice to validate image content before full processing. Non-wheat images are automatically rejected and purged from storage.
-- **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 accuracy across 15 wheat disease classes.
+- **High-Accuracy Inference** — Quantized ResNet50 ONNX model, 89% top-1 validation accuracy across 15 wheat classes. Note: Performance varies by class; see [Model Performance Analysis](#model-performance-analysis) for details.
 - **INT8 Quantization** — Model size reduced from 90MB to 22.6MB (75% reduction), faster cold-starts on CPU deployment.
 - **Context-Aware Recommendations** — Generated on demand from the result page (`/result`) using weather + user questionnaire + detected disease context.
 - **Admin Monitoring Dashboard** — Secure `/admin` interface for auditing predictions and monitoring system health.
+
+---
+
+## Model Performance Analysis
+
+The underlying ResNet50 model, while achieving a high overall validation accuracy, exhibits specific behaviors critical for production awareness.
+
+### Metrics Summary
+
+| Class | AUC | Precision | Recall | F1-Score |
+| :--- | :--- | :--- | :--- | :--- |
+| **Aphid** | 0.999 | ~0.98 | ~0.96 | ~0.97 |
+| **Black Rust** | 1.000 | ~0.96 | 1.00 | ~0.98 |
+| **Blast** | 1.000 | ~0.98 | ~0.98 | ~0.98 |
+| **Brown Rust** | 0.987 | 1.00 | 0.68 | 0.81 |
+| **Common Root Rot** | 1.000 | ~0.96 | ~0.96 | ~0.96 |
+| **Fusarium Head Blight** | 1.000 | 1.00 | 0.92 | ~0.96 |
+| **Healthy** | 0.890 | 1.00 | **0.10** | **0.18** |
+| **Leaf Blight** | 0.996 | 0.78 | 0.92 | 0.84 |
+| **Mildew** | 0.999 | 1.00 | 0.96 | 0.98 |
+| **Mite** | 0.997 | 0.95 | 0.86 | 0.90 |
+| **Septoria** | 1.000 | 1.00 | 0.92 | 0.96 |
+| **Smut** | 1.000 | 0.92 | 1.00 | 0.96 |
+| **Stem Fly** | 1.000 | 0.98 | 1.00 | 0.99 |
+| **Tan Spot** | 0.994 | 0.83 | 0.86 | 0.84 |
+| **Yellow Rust** | 0.963 | **0.46** | 1.00 | 0.63 |
+
+### Critical Technical Observations
+
+1.  **"Healthy" Class Confusion**: The model currently struggles to distinguish **Healthy** samples from **Yellow Rust**. 87.7% of healthy samples are misclassified as Yellow Rust. This results in a low recall (0.10) for the Healthy class and low precision (0.46) for Yellow Rust.
+2.  **Rust Inter-Class Directionality**: 32% of **Brown Rust** samples are misidentified as **Yellow Rust**, suggesting overlapping feature representations in the color-space or morphological analysis.
+3.  **Training Dynamics**: A characteristic gap exists where validation accuracy (~89%) exceeds training accuracy (~78%). This suggests extreme training-time augmentation or potential data leakage between splits. An unstable local minimum was noted after a learning rate intervention at Epoch 10.
+4.  **Confidence Calibration**: Misclassifications show an average confidence of ~0.75, indicating that the model is "confidently wrong" in its primary failure modes.
+
+### Engineering Roadmap for Improvement
+- **Loss Weighting**: Implementing class weights to penalize "Healthy" misclassifications.
+- **Threshold Tuning**: Adjusting softmax decision boundaries for the Yellow Rust class to improve precision.
+- **Geographic Validation**: Re-evaluating splits to ensure complete independence between training and validation data.
 
 ---
 
@@ -94,7 +132,7 @@ graph TB
 | Backend | Flask, Flask-SQLAlchemy, Gunicorn |
 | ML | PyTorch (training), ONNX, ONNX Runtime |
 | Storage | Cloudinary (images), Aiven ClickHouse (feedback records) |
-| Intelligence | OpenAI GPT-3.5-Turbo, WeatherAPI, GeoIP2 |
+| Intelligence | OpenAI GPT-4o-Mini, WeatherAPI, GeoIP2 |
 | Reporting | ReportLab (PDF generation) |
 | Deployment | Docker, Render |
 
