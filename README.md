@@ -2,7 +2,7 @@
 
 > Production-style web platform for wheat disease detection with contextual AI recommendations.
 
-**[Live Demo](https://wheat-disease-detector.onrender.com/)**
+**[Live Demo](https://wheat-disease-detection.onrender.com/)**
 
 ---
 
@@ -14,9 +14,9 @@ Most crop-disease demos stop at a class label. This system goes further:
 2. **Heuristic Region Overlays**: Automatically generates visual disease highlighting using OpenCV-based color and texture analysis (e.g., reddish-brown rust pustules) to ground the model's prediction in visual evidence.
 3. **On-Demand AI Recommendation**: Bulk analysis focuses on fast, stable classification. Users open an image result and click **Get Expert Recommendations** on `/result` to generate personalized guidance.
 4. **Quantized Edge Inference**: Uses an INT8 quantized ResNet50 model (89% accuracy) optimized for 75% smaller footprint and faster CPU cold-starts.
-5. **Human-in-the-Loop Feedback**: Captures user-corrected labels and stores them in Aiven ClickHouse, creating a verifiable ground-truth dataset for future active learning cycles.
+5. **Human-in-the-Loop Feedback**: Captures user-corrected labels and stores them in Neon PostgreSQL, creating a verifiable ground-truth dataset for future active learning cycles.
 
-This demonstrates end-to-end engineering across ML inference, backend architecture, cloud storage, managed database integration, and product UX — not just a notebook experiment.
+This demonstrates end-to-end engineering across ML inference, backend architecture, cloud storage, managed database integration (PostgreSQL), and product UX — not just a notebook experiment.
 
 ---
 
@@ -46,7 +46,7 @@ graph TB
 
     subgraph "Persistence & Intelligence"
         LLM(GPT-4o-Mini):::intelligenceNode
-        ClickHouse[(Aiven ClickHouse)]:::intelligenceNode
+        NeonDB[(Neon PostgreSQL)]:::intelligenceNode
     end
 
     Response[[Results Grid + Detail View]]:::uiNode
@@ -57,7 +57,7 @@ graph TB
     Backend --> CLIP
     Backend --> ResNet
     Backend --> OpenCV
-    Backend --> ClickHouse
+    Backend --> NeonDB
     User ==>|Open Result + Click Recommendation| LLM
     Backend ==>|JSON Response| Response
 
@@ -199,7 +199,7 @@ SELECT image_url, correct_class FROM feedback
 /
 ├── backend/
 │   ├── app.py                          # Main Flask application
-│   ├── models.py                       # Feedback schema (ClickHouse via SQLAlchemy)
+│   ├── models.py                       # Feedback schema (PostgreSQL via SQLAlchemy)
 │   ├── utils.py                        # Utility helpers (weather + misc)
 │   ├── openai_integration.py           # OpenAI recommendation orchestration
 │   ├── location.py                     # Geolocation logic
@@ -218,7 +218,7 @@ SELECT image_url, correct_class FROM feedback
 
 ## Run Locally
 
-**Prerequisites:** Python 3.10+, OpenAI API key, WeatherAPI key, Cloudinary account, Aiven ClickHouse instance
+**Prerequisites:** Python 3.10+, OpenAI API key, WeatherAPI key, Cloudinary account, Neon PostgreSQL instance
 
 ```bash
 git clone https://github.com/rautaditya2606/wheat_detection.git
@@ -234,7 +234,7 @@ WEATHER_API_KEY=your_weather_key
 CLOUDINARY_CLOUD_NAME=your_cloud_name
 CLOUDINARY_API_KEY=your_cloudinary_key
 CLOUDINARY_API_SECRET=your_cloudinary_secret
-DATABASE_URL=your_aiven_clickhouse_url
+DATABASE_URL=your_neon_postgresql_url
 SECRET_KEY=your_secret_key
 ```
 
@@ -243,11 +243,20 @@ python app.py
 # http://localhost:10000
 ```
 
+### Docker Support
+
+Alternatively, build and run with Docker:
+
+```bash
+docker pull adityaraut2606/wheat-app:migrate-clickhouse-to-neon-psql
+docker run -d -p 10000:10000 --env-file .env adityaraut2606/wheat-app:migrate-clickhouse-to-neon-psql
+```
+
 ---
 
 ## Roadmap
 
-- **Active learning pipeline** — scraped and user-corrected images stored in Cloudinary + ClickHouse, exported as an `ImageFolder`-compatible dataset for periodic fine-tuning
+- **Active learning pipeline** — scraped and user-corrected images stored in Cloudinary + Neon PostgreSQL, exported as an `ImageFolder`-compatible dataset for periodic fine-tuning
 - **CI/CD triggered retraining** — GitHub Actions workflow that triggers fine-tuning automatically when verified sample count crosses a class threshold, exports updated ONNX model
 - **Incremental fine-tuning** — new data mixed with original dataset samples to prevent catastrophic forgetting
 - **Model observability** — latency tracking, confidence distribution monitoring, and class-level prediction drift detection
