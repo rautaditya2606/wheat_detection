@@ -115,7 +115,7 @@ with app.app_context():
     db.create_all()
 
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-key-change-in-production")
-app.config["UPLOAD_FOLDER"] = "static/uploads"
+app.config["UPLOAD_FOLDER"] = os.path.join(current_dir, "static", "uploads")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max file size
 app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # 1 hour CSRF token expiration
 

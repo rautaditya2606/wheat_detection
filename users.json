@@ -10,5 +10,17 @@
     "longitude": null,
     "weather_data": {},
     "questionnaire_responses": {}
+  },
+  "2": {
+    "id": "2",
+    "username": "rautaditya2606",
+    "password_hash": "scrypt:32768:8:1$lYS8nMdp8QRgkzYJ$309c0b67a08e2d346bf71b48eb46092ab5073adf7d2ea14bbf3cda405b090669bc0d8dd8c1406c13d5d5f9835f0d338106fffcdea1f854bb146ee1603aaafee1",
+    "email": "rautaditya2606@gmail.com",
+    "location_type": "manual",
+    "manual_location": null,
+    "latitude": null,
+    "longitude": null,
+    "weather_data": {},
+    "questionnaire_responses": {}
   }
 }

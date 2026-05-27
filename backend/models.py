@@ -4,20 +4,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import json
 import os
 from datetime import datetime
-from clickhouse_sqlalchemy import engines
 import uuid
 
 db = SQLAlchemy()
 
 class Feedback(db.Model):
     __tablename__ = 'feedback'
-    __table_args__ = (
-        engines.MergeTree(order_by=('created_at',)),
-    )
+    
     id = db.Column(
         db.String(36),
         primary_key=True,
-        default=lambda ctx: str(uuid.uuid4()),
+        default=lambda: str(uuid.uuid4()),
     )
     image_url = db.Column(db.String, nullable=False)
     predicted_class = db.Column(db.String, nullable=False)
