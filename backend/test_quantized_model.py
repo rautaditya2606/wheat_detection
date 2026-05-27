@@ -37,10 +37,10 @@ def test_inference(model_path):
         return False
 
 if __name__ == "__main__":
-    model_to_test = "backend/wheat_resnet50_quantized.onnx"
+    model_to_test = "backend/onnx_models/convnext_tiny_clean_int8.onnx"
     success = test_inference(model_to_test)
     if success:
-        print("\nPASSED: The quantized model is functioning correctly.")
+        print("\nPASSED: The ConvNeXt model is functioning correctly.")
         sys.exit(0)
     else:
         print("\nFAILED: The quantized model is not working.")

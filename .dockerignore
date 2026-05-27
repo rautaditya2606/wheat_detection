@@ -8,3 +8,4 @@ ENV/
 backend/app.db
 backend/static/uploads/*
 .git/
+clean_test_export

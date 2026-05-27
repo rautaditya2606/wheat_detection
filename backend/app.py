@@ -184,7 +184,7 @@ CLASS_NAMES = {
 try:
     # Use absolute path based on current file location
     onnx_model_path = os.path.join(
-        current_dir, "onnx_models", "wheat_resnet50_quantized.onnx"
+        current_dir, "onnx_models", "convnext_tiny_clean_int8.onnx"
     )
     ort_session = ort.InferenceSession(onnx_model_path)
     print(f"Successfully loaded ONNX model from: {onnx_model_path}")
@@ -431,20 +431,29 @@ def predict():
             data = request.get_json()
             sample_path = data.get("sample_path")
             if sample_path:
-                # Security check: ensure path is within static/samples
-                if not sample_path.startswith("/static/samples/"):
+                # Security check: ensure path is within static/samples or static/marquee_assets
+                if not sample_path.startswith(("/static/samples/", "/static/marquee_assets/")):
                     return jsonify({"error": "Invalid sample path"}), 400
 
                 # Convert URL path to local path
                 # Use os.path.join with app.root_path and strip leading slash
                 relative_path = sample_path.lstrip("/")
-                filepath = os.path.join(app.root_path, relative_path)
+                sample_local_path = os.path.join(app.root_path, relative_path)
 
-                if not os.path.exists(filepath):
-                    app.logger.error(f"Sample file not found at: {filepath}")
+                if not os.path.exists(sample_local_path):
+                    app.logger.error(f"Sample file not found at: {sample_local_path}")
                     return jsonify({"error": "Sample file not found"}), 404
 
-                app.logger.info(f"Using sample image: {filepath}")
+                # IMPORTANT: For samples, we copy them to a unique location in uploads
+                # to ensure highlighting doesn't overwrite shared files or collide in browser cache
+                os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+                unique_filename = f"sample_{uuid.uuid4().hex[:10]}_{os.path.basename(sample_local_path)}"
+                filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
+                
+                import shutil
+                shutil.copy2(sample_local_path, filepath)
+
+                app.logger.info(f"Using sample image (copied to unique path): {filepath}")
 
                 # IMPORTANT: For sample images, we also need to upload to Cloudinary
                 # for the CLIP validation (which is URL-based)
@@ -489,9 +498,11 @@ def predict():
             # Ensure upload directory exists
             os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
-            # Save uploaded file
+            # Save uploaded file with unique name to prevent collisions/cache issues
             filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            base, ext = os.path.splitext(filename)
+            unique_filename = f"{base}_{uuid.uuid4().hex[:10]}{ext}"
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
             file.save(filepath)
             app.logger.info(f"File saved to {filepath}")
 

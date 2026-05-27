@@ -15,3 +15,5 @@ venv
 
 # Log files
 *.log
+
+clean_test_export/
