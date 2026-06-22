@@ -301,7 +301,7 @@ def admin_delete(feedback_id):
         except Exception as e:
             app.logger.error(f"Failed to delete from Cloudinary: {e}")
 
-    # 2. Delete from ClickHouse
+    # 2. Delete from Neon PostgreSQL via SQLAlchemy
     db.session.delete(feedback)
     db.session.commit()
 
@@ -609,7 +609,7 @@ def predict():
             if not cloudinary_url:
                 cloudinary_error = "Upload failed during validation step"
 
-            # Save Initial Feedback/Log Entry to Aiven (ClickHouse)
+            # Save Initial Feedback/Log Entry to Neon PostgreSQL
             new_feedback = Feedback(
                 image_url=cloudinary_url
                 if cloudinary_url

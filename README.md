@@ -192,7 +192,7 @@ The underlying ConvNeXt-Tiny model achieves high precision across 15 wheat class
 |---|---|
 | Backend | Flask, Flask-SQLAlchemy, Gunicorn |
 | ML | PyTorch (training), ONNX, ONNX Runtime |
-| Storage | Cloudinary (images), Aiven ClickHouse (feedback records) |
+| Storage | Cloudinary (images), Neon PostgreSQL (feedback records) |
 | Intelligence | OpenAI GPT-4o-Mini, WeatherAPI, GeoIP2 |
 | Reporting | ReportLab (PDF generation) |
 | Deployment | Docker, Render |
@@ -227,11 +227,11 @@ INT8 quantization via `onnxruntime.quantization.quantize_dynamic`:
 - Lower CPU memory pressure
 - Fast inference throughput on local CPU (65.30 ms)
 
-## Cloudinary + ClickHouse: How Images and Labels Are Linked
+## Cloudinary + Neon PostgreSQL: How Images and Labels Are Linked
 
-Every uploaded image is stored in Cloudinary. The returned `secure_url` is saved directly into the ClickHouse feedback record — this URL is the link between the image asset and its label.
+Every uploaded image is stored in Cloudinary. The returned `secure_url` is saved directly into the Neon PostgreSQL `feedback` table via Flask-SQLAlchemy — this URL is the link between the image asset and its label.
 
-**Feedback schema:**
+**Feedback schema (`models.py`):**
 
 | Field | Type | Description |
 |---|---|---|
@@ -241,6 +241,8 @@ Every uploaded image is stored in Cloudinary. The returned `secure_url` is saved
 | confidence | Float (nullable) | Prediction confidence percent |
 | correct_class | String (nullable) | User-corrected label if flagged |
 | is_correct | Boolean | User confirmation |
+| is_verified | Boolean | Admin-verified ground-truth flag |
+| used_in_training | Boolean | Whether record was used in a retraining run |
 | created_at | DateTime | Timestamp |
 
 This creates a reliable audit trail: prediction request → cloud image → persisted labeled record.
@@ -248,8 +250,9 @@ This creates a reliable audit trail: prediction request → cloud image → pers
 To reconstruct a training dataset from collected feedback:
 
 ```python
-SELECT image_url, correct_class FROM feedback
-# Download each image, save to dataset/{correct_class}/filename.jpg
+# Using SQLAlchemy ORM
+records = Feedback.query.filter_by(is_verified=True, used_in_training=False).all()
+# Download each record.image_url, save to dataset/{record.correct_class}/filename.jpg
 # PyTorch ImageFolder reads folder names as class labels directly
 ```
 
