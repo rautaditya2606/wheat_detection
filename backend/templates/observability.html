@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Header Card -->
+    <div class="bg-gradient-to-r from-green-800 to-emerald-600 rounded-3xl p-6 md:p-8 text-white shadow-xl mb-8 relative overflow-hidden">
+        <div class="absolute inset-0 bg-white/5 backdrop-blur-[1px] pointer-events-none"></div>
+        <div class="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h2 class="text-3xl font-extrabold tracking-tight">Model Observability & Drift</h2>
+                <p class="text-green-100 mt-2 max-w-xl text-sm md:text-base">
+                    Monitor target drift, feature distributions, and model performance metrics in real-time using Evidently AI.
+                </p>
+            </div>
+            <div class="flex flex-wrap gap-3">
+                <a href="{{ url_for('admin_panel') }}" class="inline-flex items-center px-4 py-2 border border-white/30 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition-all shadow-sm">
+                    <i class="fas fa-arrow-left mr-2"></i> Admin Panel
+                </a>
+                <a href="{{ url_for('observability_download_reference') }}" class="inline-flex items-center px-4 py-2 border border-transparent rounded-xl text-sm font-semibold bg-white text-green-800 hover:bg-green-50 transition-all shadow-md">
+                    <i class="fas fa-download mr-2"></i> Download Baseline CSV
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Container with Glassmorphism -->
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden flex flex-col" style="min-height: 800px;">
+        <!-- Tab Navigation Header -->
+        <div class="bg-gray-50 border-b border-gray-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <nav class="flex space-x-1 bg-gray-200/60 p-1 rounded-xl" aria-label="Tabs">
+                <button onclick="switchTab('drift')" id="tab-drift" class="px-4 py-2 text-sm font-medium rounded-lg transition-all focus:outline-none bg-white text-gray-900 shadow-sm">
+                    <i class="fas fa-chart-line mr-2 text-green-600"></i> Data & Target Drift
+                </button>
+                <button onclick="switchTab('performance')" id="tab-performance" class="px-4 py-2 text-sm font-medium rounded-lg transition-all focus:outline-none text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-tachometer-alt mr-2 text-green-600"></i> Model Performance
+                </button>
+            </nav>
+            <div class="text-xs text-gray-500 font-semibold uppercase tracking-wider bg-gray-100 px-3 py-1 rounded-full border border-gray-200/50">
+                <i class="fas fa-sync fa-spin text-green-600 mr-1.5"></i> Live Evidently Diagnostics
+            </div>
+        </div>
+
+        <!-- iframe Viewport -->
+        <div class="flex-grow w-full" style="height: 750px;">
+            <div id="iframe-container" class="w-full h-full">
+                <!-- Drift Report iframe (Visible by default) -->
+                <iframe id="report-iframe" src="{{ url_for('observability_report_drift') }}" class="w-full h-full border-0" style="min-height: 750px;" allowfullscreen></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function switchTab(tabName) {
+        const tabDrift = document.getElementById('tab-drift');
+        const tabPerformance = document.getElementById('tab-performance');
+        const iframe = document.getElementById('report-iframe');
+
+        if (tabName === 'drift') {
+            // Update Tab Classes
+            tabDrift.className = "px-4 py-2 text-sm font-medium rounded-lg transition-all focus:outline-none bg-white text-gray-900 shadow-sm";
+            tabPerformance.className = "px-4 py-2 text-sm font-medium rounded-lg transition-all focus:outline-none text-gray-600 hover:text-gray-900";
+            // Update iframe src
+            iframe.src = "{{ url_for('observability_report_drift') }}";
+        } else if (tabName === 'performance') {
+            // Update Tab Classes
+            tabDrift.className = "px-4 py-2 text-sm font-medium rounded-lg transition-all focus:outline-none text-gray-600 hover:text-gray-900";
+            tabPerformance.className = "px-4 py-2 text-sm font-medium rounded-lg transition-all focus:outline-none bg-white text-gray-900 shadow-sm";
+            // Update iframe src
+            iframe.src = "{{ url_for('observability_report_performance') }}";
+        }
+    }
+</script>
+{% endblock %}

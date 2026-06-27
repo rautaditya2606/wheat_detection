@@ -62,6 +62,7 @@ from user_data import user_data, QUESTIONNAIRE
 from utils import get_weather_data, get_llm_recommendation
 from location import location_bp, get_ip_geolocation, reverse_geocode
 from overlay_utils import highlight_infection
+from observability import get_drift_report_html, get_performance_report_html
 
 load_dotenv()
 
@@ -284,6 +285,34 @@ def admin_panel():
     return render_template("admin.html", feedbacks=feedbacks, current_user=current_user)
 
 
+@app.route("/admin/observability")
+@admin_required
+def admin_observability():
+    return render_template("observability.html", current_user=current_user)
+
+
+@app.route("/admin/observability/report/drift")
+@admin_required
+def observability_report_drift():
+    return get_drift_report_html()
+
+
+@app.route("/admin/observability/report/performance")
+@admin_required
+def observability_report_performance():
+    return get_performance_report_html()
+
+
+@app.route("/admin/observability/download-reference")
+@admin_required
+def observability_download_reference():
+    return send_from_directory(
+        directory=os.path.join(current_dir, "static"),
+        path="reference_data.csv",
+        as_attachment=True
+    )
+
+
 @app.route("/admin/delete/<feedback_id>", methods=["POST"])
 @admin_required
 def admin_delete(feedback_id):
@@ -306,6 +335,16 @@ def admin_delete(feedback_id):
     db.session.commit()
 
     flash("Entry and image deleted successfully.", "warning")
+    return redirect(url_for("admin_panel"))
+
+
+@app.route("/admin/verify/<feedback_id>", methods=["POST"])
+@admin_required
+def admin_verify(feedback_id):
+    feedback = Feedback.query.get_or_404(feedback_id)
+    feedback.is_verified = True
+    db.session.commit()
+    flash("Prediction marked as verified for active learning retraining.", "success")
     return redirect(url_for("admin_panel"))
 
 

@@ -25,6 +25,7 @@ This demonstrates end-to-end engineering across ML inference, backend architectu
 graph TB
     %% Enhanced Style Definitions
     classDef userNode fill:#0ea5e9,stroke:#0284c7,stroke-width:1px,color:#fff,rx:10,ry:10;
+    classDef adminNode fill:#f43f5e,stroke:#e11d48,stroke-width:1px,color:#fff,rx:10,ry:10;
     classDef backendNode fill:#f59e0b,stroke:#d97706,stroke-width:1px,color:#fff,rx:5,ry:5;
     classDef storageNode fill:#8b5cf6,stroke:#7c3aed,stroke-width:1px,color:#fff,rx:5,ry:5;
     classDef intelligenceNode fill:#10b981,stroke:#059669,stroke-width:1px,color:#fff,rx:5,ry:5;
@@ -32,16 +33,19 @@ graph TB
 
     %% Nodes
     User([fa:fa-user User Browser]):::userNode
+    Admin([fa:fa-user-shield Admin Dashboard]):::adminNode
     
     subgraph "Compute & Orchestration"
         Backend{Flask Route Layer}:::backendNode
         ConvNeXt(ConvNeXt-Tiny Engine):::backendNode
         OpenCV(OpenCV Highlight):::backendNode
+        Evidently(Evidently AI Engine):::backendNode
     end
 
     subgraph "Validation & Assets"
         Cloudinary[(Cloudinary)]:::storageNode
         CLIP{HF CLIP}:::storageNode
+        RefCSV[(reference_data.csv)]:::storageNode
     end
 
     subgraph "Persistence & Intelligence"
@@ -60,6 +64,12 @@ graph TB
     Backend --> NeonDB
     User ==>|Open Result + Click Recommendation| LLM
     Backend ==>|JSON Response| Response
+
+    Admin ==>|Verify Predictions| NeonDB
+    Admin ==>|View Reports| Backend
+    Backend -->|Computes Drift| Evidently
+    Evidently -->|Reads Baseline| RefCSV
+    Evidently -->|Reads Production| NeonDB
 
     %% Global Link Styling
     linkStyle default stroke:#64748b,stroke-width:1px,transition:0.3s;
@@ -184,18 +194,32 @@ The underlying ConvNeXt-Tiny model achieves high precision across 15 wheat class
 - **Threshold Tuning**: Adjusting softmax decision boundaries for the Yellow Rust class to improve precision.
 - **Geographic Validation**: Re-evaluating splits to ensure complete independence between training and validation data.
 
----
-
 ## Tech Stack
 
 | Layer | Tools |
 |---|---|
 | Backend | Flask, Flask-SQLAlchemy, Gunicorn |
-| ML | PyTorch (training), ONNX, ONNX Runtime |
+| ML / MLOps | PyTorch (timm), ONNX Runtime, MLflow, DVC, Evidently AI |
 | Storage | Cloudinary (images), Neon PostgreSQL (feedback records) |
 | Intelligence | OpenAI GPT-4o-Mini, WeatherAPI, GeoIP2 |
 | Reporting | ReportLab (PDF generation) |
 | Deployment | Docker, Render |
+
+---
+
+## MLOps Infrastructure & Retraining Pipeline
+
+The platform is designed with an end-to-end MLOps pipeline to ensure production stability, performance logging, and continuous feedback training:
+
+1. **Model Observability (Evidently AI):** Integrated Evidently AI (legacy module) reports directly into the Flask Admin Panel dashboard.
+   * **Data & Target Drift:** Compares live production inputs and confidence scores against a baseline 300-sample validation dataset (`reference_data.csv`).
+   * **Model Performance:** Computes classification performance (Accuracy, Precision, Recall) using ground-truth verified predictions.
+2. **Human-in-the-Loop Verification:** Administrators audit live predictions through the dashboard and verify them using the **Verify Prediction** feature, setting `is_verified = True` in the database.
+3. **Dataset Export (`export_dataset.py`):** Automatically pulls un-trained verified records from the database, retrieves the images from Cloudinary, and structures them into a PyTorch-compatible `ImageFolder` classification dataset.
+4. **Model Retraining (`train.py`):** Fine-tunes the `convnext_tiny` model using the newly exported feedback dataset.
+5. **Experiment Tracking (MLflow):** Retraining parameters, loss metrics, validation accuracies, and model artifacts are tracked inside a local MLflow registry.
+6. **Data & Artifact Versioning (DVC):** Versions model weights (`.onnx`) and datasets outside Git, preventing repository bloat and enabling git-like tracking for datasets.
+7. **Regression Testing & Guardrails (`test_model_regression.py`):** Automates checks on the retrained model to ensure accuracy stays above 80%, inference latency remains below 100ms, and it handles corrupted input shapes gracefully.
 
 ---
 
@@ -256,30 +280,7 @@ records = Feedback.query.filter_by(is_verified=True, used_in_training=False).all
 # PyTorch ImageFolder reads folder names as class labels directly
 ```
 
----
 
-## Project Structure
-
-```
-/
-├── backend/
-│   ├── app.py                          # Main Flask application
-│   ├── models.py                       # Feedback schema (PostgreSQL via SQLAlchemy)
-│   ├── utils.py                        # Utility helpers (weather + misc)
-│   ├── openai_integration.py           # OpenAI recommendation orchestration
-│   ├── location.py                     # Geolocation logic
-│   ├── convert_to_onnx.py              # PyTorch → ONNX export
-│   ├── optimize_onnx.py                # ONNX graph simplification
-│   ├── quantize_onnx.py                # INT8 dynamic quantization
-│   ├── wheat_resnet50_quantized.onnx   # Production model
-│   ├── templates/                      # Jinja2 HTML templates
-│   └── static/                         # Tailwind CSS, JS, uploads
-├── docs/                               # Feature documentation
-├── Dockerfile
-└── README.md
-```
-
----
 
 ## Run Locally
 
@@ -321,11 +322,11 @@ docker run -d -p 10000:10000 --env-file .env adityaraut2606/wheat-app:migrate-cl
 
 ## Roadmap
 
-- **Active learning pipeline** — scraped and user-corrected images stored in Cloudinary + Neon PostgreSQL, exported as an `ImageFolder`-compatible dataset for periodic fine-tuning
-- **CI/CD triggered retraining** — GitHub Actions workflow that triggers fine-tuning automatically when verified sample count crosses a class threshold, exports updated ONNX model
-- **Incremental fine-tuning** — new data mixed with original dataset samples to prevent catastrophic forgetting
-- **Model observability** — latency tracking, confidence distribution monitoring, and class-level prediction drift detection
-- **Dataset versioning** — track which feedback samples were used in each retraining run via `used_in_training` flag
+- **[x] Model Observability** — Live target/data drift and classification performance dashboards integrated via Evidently AI inside the Flask admin panel.
+- **[x] Active Learning Pipeline** — Production predictions stored in Cloudinary + Neon PostgreSQL database, exported via `export_dataset.py` into a PyTorch-compatible structure, and trained via `train.py`.
+- **[x] Dataset & Retraining Versioning** — Retraining runs logged to MLflow; feedback samples tracked via `used_in_training` flags in the PostgreSQL database.
+- **[ ] CI/CD Triggered Retraining** — Automate trigger on GitHub Actions when verified sample count crosses a class threshold.
+- **[ ] Incremental Fine-tuning / Experience Replay** — Mix newly verified feedback data with original dataset samples during training to prevent catastrophic forgetting.
 
 ---
 
