@@ -106,7 +106,11 @@ CORS(app, supports_credentials=True)
 model_lock = threading.Lock()
 
 # Configuration
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
+# Force the psycopg2 driver we ship, whatever scheme the env var uses (postgres://, postgresql+psycopg://)
+_db_url = os.getenv("DATABASE_URL")
+if _db_url:
+    _db_url = re.sub(r"^postgres(ql)?(\+psycopg2?)?://", "postgresql+psycopg2://", _db_url.strip().strip('"'))
+app.config["SQLALCHEMY_DATABASE_URI"] = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_pre_ping": True,
