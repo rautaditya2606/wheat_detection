@@ -2,24 +2,27 @@ import os
 import json
 import requests
 from dotenv import load_dotenv
-from openai import OpenAI
 
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI API in a safe way so import errors
-# don't crash the whole app (e.g. if library/env mismatch)
-openai_api_key = os.getenv("OPENAI_API_KEY")
-client = None
-# Using gpt-4o-mini as a stable default
-model_name = "gpt-4o-mini"
+# LLM goes through litellm so the provider is a config choice, e.g. LLM_MODEL=gemini/gemini-2.0-flash
+# (litellm reads the provider's own key, e.g. GEMINI_API_KEY, or set LLM_API_KEY / LLM_API_BASE).
+LLM_MODEL = os.getenv("LLM_MODEL")
 
-if openai_api_key:
-    try:
-        client = OpenAI(api_key=openai_api_key)
-    except Exception as e:
-        # Log the error but allow the app to start without LLM support
-        print(f"Failed to initialize OpenAI client: {e}")
+
+def llm_complete(messages, **kw):
+    import litellm  # lazy: heavy import, keep it out of startup RAM on the 512MB tier
+
+    return litellm.completion(
+        model=LLM_MODEL,
+        messages=messages,
+        api_key=os.getenv("LLM_API_KEY"),
+        api_base=os.getenv("LLM_API_BASE"),
+        # reasoning tokens eat max_tokens (empty content) and add latency; this is plain text generation
+        **({"extra_body": {"reasoning": {"enabled": False}}} if LLM_MODEL.startswith("openrouter/") else {}),
+        **kw,
+    )
 
 
 def get_weather_data(location=None):
@@ -65,12 +68,12 @@ def get_weather_data(location=None):
 
 def get_llm_recommendation(disease, questionnaire_data=None, weather_data=None):
     """
-    Get treatment recommendations from OpenAI LLM
+    Get treatment recommendations from the configured LLM
     """
-    if not openai_api_key or client is None:
+    if not LLM_MODEL:
         return (
             "LLM integration is currently unavailable. "
-            "Please ensure OPENAI_API_KEY is set and the OpenAI client is compatible."
+            "Please set LLM_MODEL and the provider's API key."
         )
 
     try:
@@ -116,9 +119,8 @@ Example structure:
 </div>
 """
 
-        # Generate content using OpenAI
-        response = client.chat.completions.create(
-            model=model_name,
+        # Generate content via litellm
+        response = llm_complete(
             messages=[
                 {"role": "system", "content": "You are a helpful agricultural expert."},
                 {"role": "user", "content": prompt}

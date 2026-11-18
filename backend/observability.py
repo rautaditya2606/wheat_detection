@@ -1,12 +1,17 @@
 import os
-import pandas as pd
-from evidently.legacy.report import Report
-from evidently.legacy.metric_preset import DataDriftPreset, ClassificationPreset
-from evidently.legacy.pipeline.column_mapping import ColumnMapping
 from models import Feedback
+
+# pandas/evidently are imported lazily: they cost ~200MB RAM and are only needed on the admin report pages.
+def _libs():
+    import pandas as pd
+    from evidently.legacy.report import Report
+    from evidently.legacy.metric_preset import DataDriftPreset, ClassificationPreset
+    from evidently.legacy.pipeline.column_mapping import ColumnMapping
+    return pd, Report, DataDriftPreset, ClassificationPreset, ColumnMapping
 
 def get_drift_report_html():
     """Generates an Evidently Data & Target Drift report comparing reference to production predictions."""
+    pd, Report, DataDriftPreset, _, ColumnMapping = _libs()
     reference_path = os.path.join(os.path.dirname(__file__), "static", "reference_data.csv")
     if not os.path.exists(reference_path):
         return "<h3>Reference dataset not found. Please pre-generate the reference CSV.</h3>"
@@ -38,6 +43,7 @@ def get_drift_report_html():
 
 def get_performance_report_html():
     """Generates an Evidently Classification Performance report based on admin-verified feedback."""
+    pd, Report, _, ClassificationPreset, ColumnMapping = _libs()
     reference_path = os.path.join(os.path.dirname(__file__), "static", "reference_data.csv")
     if not os.path.exists(reference_path):
         return "<h3>Reference dataset not found. Please pre-generate the reference CSV.</h3>"

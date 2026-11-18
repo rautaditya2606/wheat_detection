@@ -1,25 +1,10 @@
 import os
 import time
 from dotenv import load_dotenv
-from openai import OpenAI
+from utils import llm_complete, LLM_MODEL
 
 # Load environment variables
 load_dotenv()
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Use stable OpenAI model
-MODEL_TO_USE = "gpt-4o-mini"
-
-# Initialize OpenAI client safely at import time so any
-# library/env mismatch doesn't raise during a request.
-openai_client = None
-if OPENAI_API_KEY:
-    try:
-        openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception as e:
-        # Log and continue; callers will see a clean error message instead
-        print(f"Failed to initialize OpenAI client in openai_integration: {e}")
 
 # Sample user data for testing
 sample_user_data = {
@@ -51,20 +36,10 @@ sample_user_data = {
 }
 
 
-def get_openai_recommendation(user_data):
-    if not OPENAI_API_KEY:
-        return {
-            "status": "error",
-            "message": "OPENAI_API_KEY not found in environment variables",
-        }
+SYSTEM_PROMPT = "You are an expert agricultural consultant specializing in wheat pathology and sustainable farming."
 
-    if openai_client is None:
-        # Either initialization failed or key is missing/invalid
-        return {
-            "status": "error",
-            "message": "LLM integration is currently unavailable. Please check your OpenAI configuration.",
-        }
 
+def _build_prompt(user_data):
     weather = user_data.get("weather", {})
     weather_condition = weather.get("condition", "Clear")
 
@@ -79,7 +54,7 @@ def get_openai_recommendation(user_data):
 
     prompt = f"""
 You are an expert agricultural scientist and wheat production specialist. 
-Provide a professional, highly structured, and COMPREHENSIVE recommendation for a farmer whose crop is affected.
+Provide a professional, highly structured, and concise recommendation for a farmer whose crop is affected.
 
 FARMER'S CURRENT CONTEXT:
 - Location: {user_data.get('location', {}).get('city', 'Unknown')}, {user_data.get('location', {}).get('country', 'Unknown')}
@@ -102,7 +77,7 @@ Use the following structure exactly:
 <div class="actions-section mb-6 bg-red-50 p-4 rounded-lg border-l-4 border-red-500">
   <h3 class="text-xl font-bold text-red-800 mb-3">II. Immediate Rescue Actions</h3>
   <ul class="list-disc pl-5 space-y-3">
-    <li><strong>[Action Name]:</strong> [Provide a thorough explanation (3-4 sentences) of a specific, high-priority physical or cultural intervention. Describe how to perform it and why it's effective.]</li>
+    <li><strong>[Action Name]:</strong> [Provide a thorough explanation (1-2 sentences) of a specific, high-priority physical or cultural intervention. Describe how to perform it and why it's effective.]</li>
     <li><strong>[Organic/Chemical Treatment]:</strong> [Recommend specific active ingredients (e.g., Propiconazole for rust, or Neem-based solutions) and explain in detail exactly how they work at a molecular or cellular level against {user_data.get('disease_detected')}.]</li>
     <li><strong>[Dosage/Application]:</strong> [Provide comprehensive application instructions, including precise dosage, water mixing ratios, optimal timing (morning/evening), frequency of application, and critical safety precautions regarding weather and personal protection.]</li>
   </ul>
@@ -118,24 +93,50 @@ Use the following structure exactly:
 
 INSTRUCTIONS:
 - Use professional yet accessible language.
-- provide substantial, actionable, and voluminous details for each point. The total length should be significant (around 600-800 words) to provide deep value.
+- give specific, actionable details for each point. Keep it concise: around 250-350 words in total.
 - Avoid generic advice; tailor every sentence to the disease, weather, and farm parameters provided.
 - Ensure the HTML is valid and all tags are properly closed.
 - DO NOT use any markdown symbols like #, *, or backticks anywhere in your response.
 """
+    return prompt
+
+
+def stream_recommendation(user_data):
+    """Yield the recommendation HTML in chunks as the model writes it (no retries once started)."""
+    resp = llm_complete(
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": _build_prompt(user_data)},
+        ],
+        temperature=0.4,
+        max_tokens=900,
+        stream=True,
+    )
+    for chunk in resp:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
+def get_openai_recommendation(user_data):
+    if not LLM_MODEL:
+        return {
+            "status": "error",
+            "message": "LLM_MODEL not set. Configure LLM_MODEL and the provider's API key.",
+        }
+
+    prompt = _build_prompt(user_data)
 
     for attempt in range(3):
         try:
-            print(f"Attempting OpenAI recommendation, attempt={attempt + 1}")
+            print(f"Attempting LLM recommendation, attempt={attempt + 1}")
 
-            response = openai_client.chat.completions.create(
-                model=MODEL_TO_USE,
+            response = llm_complete(
                 messages=[
-                    {"role": "system", "content": "You are an expert agricultural consultant specializing in wheat pathology and sustainable farming."},
+                    {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.4,
-                max_tokens=2048,
+                max_tokens=900,
             )
 
             text = response.choices[0].message.content
@@ -161,17 +162,17 @@ INSTRUCTIONS:
             else:
                 return {
                     "status": "error",
-                    "message": f"OpenAI API failure: {str(e)}",
+                    "message": f"LLM API failure: {str(e)}",
                 }
 
     return {
         "status": "error",
-        "message": "OpenAI API failure after multiple attempts",
+        "message": "LLM API failure after multiple attempts",
     }
 
 
 def test_openai_integration():
-    print("Starting OpenAI API Test...")
+    print("Starting LLM API Test...")
     res = get_openai_recommendation(sample_user_data)
 
     if res["status"] == "success":

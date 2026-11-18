@@ -19,6 +19,8 @@ from flask import (
     make_response,
     session,
     send_from_directory,
+    Response,
+    stream_with_context,
 )
 from flask_cors import CORS
 from asgiref.wsgi import WsgiToAsgi
@@ -36,6 +38,7 @@ import requests
 import json
 import uuid
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import onnxruntime as ort
 import cloudinary
@@ -187,11 +190,56 @@ try:
     onnx_model_path = os.path.join(
         current_dir, "onnx_models", "convnext_tiny_clean_int8.onnx"
     )
-    ort_session = ort.InferenceSession(onnx_model_path)
+    so = ort.SessionOptions()
+    so.enable_mem_pattern = False  # lower peak RAM on 512MB
+    ort_session = ort.InferenceSession(onnx_model_path, so, providers=["CPUExecutionProvider"])
     print(f"Successfully loaded ONNX model from: {onnx_model_path}")
 except Exception as e:
     print(f"Error loading ONNX model: {e}")
     ort_session = None
+
+
+_pool = ThreadPoolExecutor(max_workers=4)
+
+
+def upload_and_validate(filepath):
+    """Cloudinary upload then CLIP check. Returns (url, public_id, wheat_score_if_rejected_else_None)."""
+    url = public_id = None
+    try:
+        r = cloudinary.uploader.upload(filepath, folder="wheat_disease")
+        url, public_id = r.get("secure_url"), r.get("public_id")
+    except Exception as ce:
+        app.logger.error(f"Cloudinary upload failed for upload: {str(ce)}")
+        return None, None, None
+    try:
+        # No trailing slash for HF Spaces to avoid 405/500 redirect loops
+        resp = requests.post(
+            CLIP_VERIFY_URL.rstrip("/"), json={"image_url": url}, timeout=45
+        )
+        if resp.status_code == 200:
+            d = resp.json()
+            if not d.get("is_valid", True):
+                return url, public_id, d.get("wheat_score", 0.0)
+        else:
+            app.logger.error(f"HF Space returned error {resp.status_code}")
+    except Exception as e:
+        # Continue if validation is down to avoid blocking user
+        app.logger.error(f"Error during CLIP validation: {str(e)}")
+    return url, public_id, None
+
+
+def shrink_upload(path, max_side=1024):
+    """Downscale a saved upload in place so upload/CLIP/OpenCV work on a small file (free tier: 0.1 CPU, 512MB)."""
+    try:
+        with Image.open(path) as im:
+            im.draft("RGB", (max_side, max_side))  # JPEG: decode at reduced size, much faster
+            if max(im.size) <= max_side and im.format == "JPEG":
+                return
+            im = im.convert("RGB")
+            im.thumbnail((max_side, max_side))
+            im.save(path, format="JPEG", quality=90)
+    except Exception:
+        pass  # invalid image: the caller's own validation reports it
 
 
 def preprocess_image(image):
@@ -464,6 +512,7 @@ def predict():
         filepath = None
         cloudinary_url = None
         public_id = None
+        validation = None
 
         # Handle sample image selection (JSON request)
         if request.is_json:
@@ -543,67 +592,11 @@ def predict():
             unique_filename = f"{base}_{uuid.uuid4().hex[:10]}{ext}"
             filepath = os.path.join(app.config["UPLOAD_FOLDER"], unique_filename)
             file.save(filepath)
+            shrink_upload(filepath)
             app.logger.info(f"File saved to {filepath}")
 
-            # CLIP Validation (Hugging Face Space)
-            app.logger.info(
-                f"Sending image URL for CLIP validation to {CLIP_VERIFY_URL}"
-            )
-            try:
-                # 1. Start Cloudinary Upload FIRST (Needed because validation is now URL-based)
-                # We upload even if it's junk, but we'll purge it in a few lines if validation fails.
-                upload_result = cloudinary.uploader.upload(
-                    filepath, folder="wheat_disease"
-                )
-                cloudinary_url = upload_result.get("secure_url")
-                public_id = upload_result.get("public_id")
-            except Exception as ce:
-                app.logger.error(f"Cloudinary upload failed for upload: {str(ce)}")
-
-            try:
-                if cloudinary_url:
-                    # 2. Call Hugging Face Space CLIP Validation
-                    # No trailing slash for HF Spaces to avoid 405/500 redirect loops
-                    val_url = CLIP_VERIFY_URL.rstrip("/")
-                    val_response = requests.post(
-                        val_url, json={"image_url": cloudinary_url}, timeout=45
-                    )
-
-                    if val_response.status_code == 200:
-                        val_data = val_response.json()
-                        # Updated to match your final HF Space code: {"is_valid": True/False, "wheat_score": ...}
-                        is_valid = val_data.get("is_valid", True)
-                        wheat_score = val_data.get("wheat_score", 0.0)
-
-                        if not is_valid:
-                            app.logger.warning(
-                                f"CLIP validation failed (Score: {wheat_score}). Purging image."
-                            )
-                            # Purge from Cloudinary immediately
-                            if public_id:
-                                cloudinary.uploader.destroy(public_id)
-                            if "/static/samples/" not in filepath and os.path.exists(
-                                filepath
-                            ):
-                                os.remove(filepath)
-                            return jsonify(
-                                {
-                                    "error": f"Image validation failed: This doesn't look like a wheat crop (Wheat Confidence: {wheat_score * 100:.2f}%)",
-                                    "success": False,
-                                }
-                            ), 400
-                    else:
-                        app.logger.error(
-                            f"HF Space returned error {val_response.status_code}"
-                        )
-                else:
-                    app.logger.warning(
-                        "Skipping CLIP validation as Cloudinary URL is missing"
-                    )
-
-            except Exception as e:
-                app.logger.error(f"Error during CLIP validation: {str(e)}")
-                # Continue if validation is down to avoid blocking user
+            # Upload + CLIP run in the background while inference/highlighting run below
+            validation = _pool.submit(upload_and_validate, filepath)
 
         # Open and verify image (ResNet50 processing)
         try:
@@ -618,6 +611,8 @@ def predict():
                 image = Image.open(filepath).convert("RGB")
         except Exception as e:
             app.logger.error(f"Invalid image file: {str(e)}")
+            if validation and validation.result()[1]:
+                cloudinary.uploader.destroy(validation.result()[1])
             if os.path.exists(filepath):
                 os.remove(filepath)
             return jsonify({"error": "Invalid image file"}), 400
@@ -643,7 +638,38 @@ def predict():
             predicted_label = CLASS_NAMES.get(int(predicted_class), "Unknown")
             confidence_score = float(np.max(probabilities)) * 100
 
-            # Wait for Cloudinary upload result (already done above, but we reuse the vars)
+            weather_data = get_current_user_weather()
+
+            highlighted_url = None
+            highlighted_path = None
+            if predicted_label != "Healthy":
+                highlighted_filename = f"highlighted_{os.path.basename(filepath)}"
+                highlighted_path = os.path.join(
+                    app.config["UPLOAD_FOLDER"], highlighted_filename
+                )
+                if highlight_infection(filepath, predicted_label, highlighted_path):
+                    highlighted_url = f"/uploads/{highlighted_filename}"
+                    app.logger.info(f"Highlighted image saved to {highlighted_path}")
+
+            # Join the background upload + CLIP check
+            if validation:
+                cloudinary_url, public_id, rejected_score = validation.result()
+                if rejected_score is not None:
+                    app.logger.warning(
+                        f"CLIP validation failed (Score: {rejected_score}). Purging image."
+                    )
+                    if public_id:
+                        cloudinary.uploader.destroy(public_id)
+                    for p in (filepath, highlighted_path):
+                        if p and os.path.exists(p):
+                            os.remove(p)
+                    return jsonify(
+                        {
+                            "error": f"Image validation failed: This doesn't look like a wheat crop (Wheat Confidence: {rejected_score * 100:.2f}%)",
+                            "success": False,
+                        }
+                    ), 400
+
             cloudinary_error = None
             if not cloudinary_url:
                 cloudinary_error = "Upload failed during validation step"
@@ -659,20 +685,6 @@ def predict():
             )
             db.session.add(new_feedback)
             db.session.commit()
-
-            # Get weather data for current user if available
-            weather_data = get_current_user_weather()
-
-            # Apply infection highlighting
-            highlighted_url = None
-            if predicted_label != "Healthy":
-                highlighted_filename = f"highlighted_{os.path.basename(filepath)}"
-                highlighted_path = os.path.join(
-                    app.config["UPLOAD_FOLDER"], highlighted_filename
-                )
-                if highlight_infection(filepath, predicted_label, highlighted_path):
-                    highlighted_url = f"/uploads/{highlighted_filename}"
-                    app.logger.info(f"Highlighted image saved to {highlighted_path}")
 
             # Prepare response data
             image_url = f"/uploads/{os.path.basename(filepath)}"
@@ -780,6 +792,7 @@ def predict_bulk():
                 save_name = f"bulk_{uuid.uuid4().hex[:10]}_{safe_name}"
                 filepath = os.path.join(app.config["UPLOAD_FOLDER"], save_name)
                 file.save(filepath)
+                shrink_upload(filepath)
 
                 try:
                     upload_result = cloudinary.uploader.upload(
@@ -1080,6 +1093,35 @@ def update_answers():
         )
 
 
+# Streamed responses can't write the session after headers are sent, so the finished text
+# is kept here (per user) for /export-report. shortcut: in-memory, lost on restart, single worker only.
+_last_recommendation = {}
+
+
+def stream_recommendation_response(user_data, data):
+    from openai_integration import stream_recommendation, LLM_MODEL
+
+    if not LLM_MODEL:
+        return jsonify({"status": "error", "message": "Recommendation service is currently unavailable."}), 500
+    session["last_image_path"] = data.get("image_path")
+    session["last_highlighted_path"] = data.get("highlighted_url")
+    uid = current_user.get_id()
+
+    def gen():
+        parts = []
+        try:
+            for piece in stream_recommendation(user_data):
+                parts.append(piece)
+                yield piece
+        except Exception as e:
+            app.logger.error(f"LLM stream failed: {e}")
+            yield '<div class="p-4 bg-red-50 text-red-700 rounded-lg">Recommendation service currently overloaded. Please try again in a few moments.</div>'
+            return
+        _last_recommendation[uid] = "".join(parts).strip()
+
+    return Response(stream_with_context(gen()), mimetype="text/html")
+
+
 @app.route("/get-recommendations", methods=["POST"])
 @login_required
 def get_recommendations():
@@ -1144,7 +1186,10 @@ def get_recommendations():
         # Store user_data in session for export later
         session["last_user_data"] = user_data
 
-        # Get recommendations from OpenAI
+        if data.get("stream"):
+            return stream_recommendation_response(user_data, data)
+
+        # Get recommendations from the LLM
         try:
             from openai_integration import get_openai_recommendation
 
@@ -1198,7 +1243,9 @@ def get_recommendations():
 @login_required
 def export_report():
     user_data = session.get("last_user_data")
-    recommendation = session.get("last_recommendation")
+    recommendation = session.get("last_recommendation") or _last_recommendation.get(
+        current_user.get_id()
+    )
     image_path = session.get("last_image_path")
     highlighted_path = session.get("last_highlighted_path")
 

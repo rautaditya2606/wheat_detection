@@ -250,7 +250,8 @@ if (analyzeBtn) {
                     disease: '{{ label }}',
                     image_path: '{{ image_path }}',
                     highlighted_url: '{{ highlighted_path }}',
-                    weather_data: {{ weather_data|tojson|safe }}
+                    weather_data: {{ weather_data|tojson|safe }},
+                    stream: true
                 })
             });
 
@@ -258,27 +259,29 @@ if (analyzeBtn) {
                 throw new Error('Failed to get recommendations');
             }
 
-            const data = await response.json();
-            
-            if (data.recommendation) {
-                recommendationsContent.innerHTML = data.recommendation;
-                
-                // Show section and export button with animation
-                recommendationsSection.classList.remove('hidden');
+            // Show the section right away and fill it as text streams in
+            recommendationsSection.classList.remove('hidden');
+            void recommendationsSection.offsetWidth;
+            recommendationsSection.classList.remove('opacity-0', 'translate-y-4');
+            recommendationsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let html = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                html += decoder.decode(value, { stream: true });
+                recommendationsContent.innerHTML = html;
+            }
+
+            if (html.trim()) {
                 exportAction.classList.remove('hidden');
-                // Trigger reflow
-                void recommendationsSection.offsetWidth;
-                recommendationsSection.classList.remove('opacity-0', 'translate-y-4');
-                
                 analyzeBtnText.textContent = 'Recommendations Ready';
                 analyzeBtn.classList.remove('bg-indigo-600', 'hover:bg-indigo-700');
                 analyzeBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-                
-                // Scroll to recommendations
-                recommendationsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } else {
-                recommendationsContent.innerHTML = data.message || '<div class="p-4 bg-red-50 text-red-700 rounded-lg">No specific recommendations available at this time.</div>';
-                recommendationsSection.classList.remove('hidden', 'opacity-0', 'translate-y-4');
+                recommendationsContent.innerHTML = '<div class="p-4 bg-red-50 text-red-700 rounded-lg">No specific recommendations available at this time.</div>';
                 analyzeBtnText.textContent = 'Try Again';
             }
         } catch (error) {
