@@ -6,23 +6,22 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# LLM goes through litellm so the provider is a config choice, e.g. LLM_MODEL=gemini/gemini-2.0-flash
-# (litellm reads the provider's own key, e.g. GEMINI_API_KEY, or set LLM_API_KEY / LLM_API_BASE).
-LLM_MODEL = os.getenv("LLM_MODEL")
+# Any OpenAI-compatible endpoint: OpenRouter by default (LLM_MODEL=deepseek/deepseek-v4.1-flash, LLM_API_KEY=...).
+# Plain openai SDK instead of litellm: litellm costs ~285MB RAM on import, over the 512MB free tier.
+LLM_MODEL = (os.getenv("LLM_MODEL") or "").removeprefix("openrouter/")
+LLM_API_BASE = os.getenv("LLM_API_BASE") or "https://openrouter.ai/api/v1"
+_llm_client = None
 
 
 def llm_complete(messages, **kw):
-    import litellm  # lazy: heavy import, keep it out of startup RAM on the 512MB tier
+    global _llm_client
+    if _llm_client is None:
+        from openai import OpenAI
 
-    return litellm.completion(
-        model=LLM_MODEL,
-        messages=messages,
-        api_key=os.getenv("LLM_API_KEY"),
-        api_base=os.getenv("LLM_API_BASE"),
-        # reasoning tokens eat max_tokens (empty content) and add latency; this is plain text generation
-        **({"extra_body": {"reasoning": {"enabled": False}}} if LLM_MODEL.startswith("openrouter/") else {}),
-        **kw,
-    )
+        _llm_client = OpenAI(api_key=os.getenv("LLM_API_KEY"), base_url=LLM_API_BASE, timeout=60)
+    # reasoning tokens eat max_tokens (empty content) and add latency; this is plain text generation
+    extra = {"reasoning": {"enabled": False}} if "openrouter" in LLM_API_BASE else None
+    return _llm_client.chat.completions.create(model=LLM_MODEL, messages=messages, extra_body=extra, **kw)
 
 
 def get_weather_data(location=None):
